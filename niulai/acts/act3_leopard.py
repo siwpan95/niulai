@@ -43,8 +43,9 @@ LINES = (
     (155.0, 162.0, '牛来', '我别怕它，它是一条小溪流。'),
     (335.0, 342.0, '牛来', '满足你的胃，它会治愈悲伤的。'),
     (343.0, 349.0, '牛来', '将就点，要不饿成狗！'),
-    (455.0, 462.0, '牛妈妈', '你们以后必须要分开。'),
-    (463.0, 469.0, '牛来', '妈妈，救救豹拉吧！'),
+    (548.0, 556.0, '牛妈妈', '你们以后必须要分开。'),
+    (558.0, 566.0, '牛来', '妈妈，救救豹拉吧！'),
+    (570.0, 578.0, '牛妈妈', '好吧，你先来点爸爸的专属。'),
     (645.0, 652.0, '牛来', '就算分开我们还是朋友。'),
     (654.0, 660.0, '豹拉', '相信我，我还会在你身后出现的。'),
 )
@@ -118,14 +119,19 @@ class LeopardScene:
             return base.orbit_eye(mid, ang, 7.0, 2.2), mid
 
         def cam_share(u, t):
+            # 机位在牛来身后越肩望向豹拉（原来绕牛来转会扎到豹拉脸上——实测踩坑）
             cx, cz = self._calf_xy(t)
-            c = (cx, self.ground(cx, cz) + 0.8, cz)
-            return base.orbit_eye(c, 2.2, 5.5, 1.4), c
+            lx, lz = self._leo_xy(t)
+            ang = math.atan2(lz - cz, lx - cx)
+            eye = (cx - math.cos(ang) * 4.0, self.ground(cx, cz) + 1.5,
+                   cz - math.sin(ang) * 4.0)
+            return eye, (lx, self.ground(lx, lz) + 0.9, lz)
 
         def cam_mother(u, t):
-            c = (CAMP[0], self.ground(*CAMP) + 1.2, CAMP[1])
+            c = (MEET[0] + 3.0, self.ground(MEET[0] + 3.0, MEET[1]) + 1.0,
+                 MEET[1] + 0.5)
             ang = -0.6 + 0.2 * math.sin(u * 0.08)
-            return base.orbit_eye(c, ang, 10.0, 3.0), c
+            return base.orbit_eye(c, ang, 8.5, 2.6), c
 
         def cam_wolves(u, t):
             # 狼群初袭：低机位跟两只狼
@@ -171,8 +177,15 @@ class LeopardScene:
         leo_mode = 'run' if (450.0 <= t < 560.0 or t >= 560.0) else 'walk'
         # 牛来
         self.calf.origin = Vec3(cx, self.ground(cx, cz) + 0.61, cz)
-        # 妈妈（营地）
-        base.place_quad(self.mother, CAMP[0], CAMP[1], -1.6, self.ground)
+        # 妈妈：450-540s（约法三章）从营地走向初遇点，其余时间守营地
+        if 450.0 <= t < 540.0:
+            u = base.smooth((t - 450.0) / 90.0)
+            mx = CAMP[0] + (MEET[0] + 4.5 - CAMP[0]) * u
+            mz = CAMP[1] + (MEET[1] - 1.0 - CAMP[1]) * u
+            mmode = 'walk'
+        else:
+            mx, mz, mmode = CAMP[0], CAMP[1], 'stand'
+        base.place_quad(self.mother, mx, mz, -1.6, self.ground)
         # 狼（初袭段 2 只在远处巡游）
         for i, w in enumerate(self.wolves[:2] if 450.0 <= t < 560.0 else []):
             ang = t * 0.3 + i * 2.1
@@ -187,7 +200,7 @@ class LeopardScene:
         out = [self.terrain_md, self.river_md]
         out.extend(self.leopard.meshes(tq, mode=leo_mode, speed=1.1))
         out.extend(self.calf.meshes(tq))
-        out.extend(self.mother.meshes(tq, mode='stand'))
+        out.extend(self.mother.meshes(tq, mode=mmode, speed=0.8))
         for w in (self.wolves[:2] if 540.0 <= t < 640.0 else []):
             out.extend(w.meshes(tq, mode='walk', speed=1.2))
         for q in self.herd:
@@ -195,7 +208,8 @@ class LeopardScene:
         self.cast.set_pose('niulai', cx, self.calf.origin.y, cz)
         self.cast.set_pose('baola', lx, self.leopard.origin.y, lz, leo_yaw,
                            mode=leo_mode)
-        self.cast.set_pose('mother', CAMP[0], self.mother.origin.y, CAMP[1])
+        self.cast.set_pose('mother', self.mother.origin.x, self.mother.origin.y,
+                           self.mother.origin.z, self.mother.yaw, mode=mmode)
         return out
 
     def overlays(self, t):

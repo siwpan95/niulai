@@ -35,7 +35,7 @@ T_END = 1080.0
 
 SKY = (0.11, 0.14, 0.22)          # 夜（提亮：狼群要读得出）
 FOG_K = 0.0165
-TINT = (0.58, 0.62, 0.78)         # 全局压暗偏蓝（月光）
+TINT = (0.66, 0.70, 0.84)         # 全局压暗偏蓝（月光；角色要读得出）
 
 TREE_AT = (10.0, 64.0)      # 北岸干地（河床 z<=61 在水下，实测剖面）
 CAMP = (10.0, 70.0)
@@ -126,7 +126,7 @@ class WolvesScene:
             mx, mz = self._mother_xy(t)
             c = (mx, self.ground(mx, mz) + 1.0, mz)
             ang = 2.4 + 0.2 * math.sin(u * 0.07)
-            return base.orbit_eye(c, ang, 9.0, 2.6), c
+            return base.orbit_eye(c, ang, 7.5, 2.2), c
 
         def cam_dawn(u, t):
             c = (TREE_AT[0], self.ground(*TREE_AT) + 4.0, TREE_AT[1])

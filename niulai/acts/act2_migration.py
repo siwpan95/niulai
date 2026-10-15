@@ -76,7 +76,9 @@ class MigrationScene:
                      for i in range(migration.HERD_SIZE)]
         self.calf = Calf()
         self.mother = Quadruped(MOTHER_SPEC)
-        self.snake = Snake(ground=self.ground)
+        # 蛇：南岸渡口旁游走（自定义路径；默认路径在长幕 t 下会飞界外）
+        self.snake = Snake(ground=self.ground, path_fn=lambda t: (
+            14.0 + 2.5 * math.sin(t * 0.5), 44.5 + 1.8 * math.sin(t * 0.9 + 1.2)))
         self.cast = CastWorld()
         for i in range(migration.HERD_SIZE):
             self.cast.register(f'herd{i}')

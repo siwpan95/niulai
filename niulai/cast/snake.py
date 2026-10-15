@@ -19,16 +19,22 @@ class Snake(Rig):
     COLOR = (0.35, 0.45, 0.24)
     HEAD_COLOR = (0.40, 0.50, 0.27)
 
-    def __init__(self, ground=None, yaw=0.0):
+    def __init__(self, ground=None, yaw=0.0, path_fn=None):
         self.PARTS = tuple(
             [(f'seg{i}', *self.SEG, self.COLOR, (0.0, 0.0, 0.0))
              for i in range(self.SEGMENTS)]
             + [('head', *self.HEAD, self.HEAD_COLOR, (0.0, 0.0, 0.0))])
         super().__init__(origin=(0.0, 0.0, 0.0), yaw=yaw)
         self.ground = ground or (lambda x, z: 0.0)
+        # path_fn：场景可注入自定义路径（纯函数 t -> (x, z)）。
+        # 默认路径按小 t 设计（序幕尺度）；**长幕必须注入**——
+        # 否则 t=400 时默认路径已飞到 x≈1300 界外，相机会被拖去追蛇（实测踩坑）
+        self._path_fn = path_fn
 
     def path(self, t):
-        """世界路径点 (x, z)：确定性正弦（幅度/频率硬编码，可复现）。"""
+        """世界路径点 (x, z)（确定性纯函数）。"""
+        if self._path_fn is not None:
+            return self._path_fn(t)
         x = -30.0 + 3.2 * t
         z = 42.0 + 6.0 * math.sin(t * 0.6)
         return x, z
