@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from niulai import FPS, MASTER_SEED, TOTAL_DURATION
 from niulai.acts.act0_prologue import CALF_AT, PrologueScene
 from niulai.bridge.events import EV_ACT_ENTER, Bridge
+from niulai.brains import migration, wolves
 from niulai.cast import perf
 from niulai.cast.rig import bounds_of
 from niulai.cast.skylark import Skylark, flight_head, flight_pos
@@ -142,10 +143,84 @@ def test_bridge_minimal():
     check('桥接历史有界增长', len(bridge.log) == 1)
 
 
+def test_herd_and_pack():
+    print('test_herd_and_pack')
+    # 全哥口径：牛群 30-50 实例化 + 狼群 8-12 行为树
+    check('牛群规模 30-50', 30 <= migration.HERD_SIZE <= 50,
+          f'HERD_SIZE={migration.HERD_SIZE}')
+    check('狼群规模 8-12', 8 <= wolves.WOLF_COUNT <= 12,
+          f'WOLF_COUNT={wolves.WOLF_COUNT}')
+    # 编队确定性 + 规模
+    a = migration.herd_slots(0.5)
+    b = migration.herd_slots(0.5)
+    check('编队确定性', a == b)
+    check('编队规模', len(a) == migration.HERD_SIZE)
+    # 领队沿路径、槽位在领队后方 20 单位内
+    lx, lz, _ = a[0]
+    for x, z, _ in a[1:]:
+        d = ((x - lx) ** 2 + (z - lz) ** 2) ** 0.5
+        if d > 22.0:
+            check('槽位距领队', False, f'd={d:.1f}')
+            break
+    else:
+        check('槽位距领队', True)
+    # 路径端点（绿地出发、河边收尾）
+    check('路径起点', migration.migration_path(0.0) == (62.0, -16.0))
+    ex, ez = migration.migration_path(1.0)
+    check('路径终点近渡口', abs(ex - 10.0) < 1.0 and abs(ez - 52.0) < 1.0,
+          f'({ex:.1f},{ez:.1f})')
+
+
+def test_battle_determinism():
+    print('test_battle_determinism')
+    b1 = wolves.build_battle_log()
+    b2 = wolves.build_battle_log()
+    check('战斗节拍确定性（同种子两次运行逐字相同）', b1 == b2)
+    check('战斗节拍非空', len(b1) > 5, f'{len(b1)} beats')
+    # 狼群态势：环半径有界（中心与 act4 一致 = 树下）
+    for t in (0.0, 8.0, 20.0):
+        pack = wolves.pack_positions(t, center=(10.0, 63.0))
+        check(f'狼群 t={t} 规模', len(pack) == wolves.WOLF_COUNT)
+        rs = [((x - 10.0) ** 2 + (z - 63.0) ** 2) ** 0.5 for x, z, _, _ in pack]
+        check(f'狼群 t={t} 环半径', 2.0 <= max(rs) <= 22.0, f'max_r={max(rs):.1f}')
+
+
+def test_subtitles():
+    print('test_subtitles')
+    from niulai.acts.act1_stand import LINES as L1
+    from niulai.acts.subtitles import SubtitleTrack
+    tr = SubtitleTrack(L1)
+    check('台词起始前无字幕', tr.line_at(1.0) is None)
+    sp, tx = tr.line_at(5.0)
+    check('台词窗口内命中', sp == '牛妈妈' and '欢迎你' in tx)
+    check('台词结束后无字幕', tr.line_at(300.0) is None)
+    # 时间窗不重叠（同一时刻只显示一句）
+    windows = sorted((t0, t1) for t0, t1, _, _ in L1)
+    overlap = any(windows[i][1] > windows[i + 1][0] + 1e-9
+                  for i in range(len(windows) - 1))
+    check('台词时间窗不重叠', not overlap)
+
+
+def test_ost():
+    print('test_ost')
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        print('  skip: numpy 缺失（OST 需要 audio extra）')
+        return
+    import os
+    import tempfile
+    from niulai.audio.ost import render_theme
+    with tempfile.TemporaryDirectory() as tmp:
+        p = render_theme('wolves', os.path.join(tmp, 't.wav'), duration_sec=5.0)
+        check('OST 渲染非空', os.path.getsize(p) > 10000)
+
+
 def main():
     for fn in (test_timeline, test_quantize, test_calf_cannot_stand,
                test_skylark_flight, test_desert, test_scene_camera,
-               test_bridge_minimal):
+               test_bridge_minimal, test_herd_and_pack,
+               test_battle_determinism, test_subtitles, test_ost):
         fn()
     print()
     if FAILED:

@@ -14,7 +14,9 @@ import os
 import subprocess
 
 import pyglet
-from pyglet.gl import GL_DEPTH_TEST, GL_TRIANGLES, glClearColor, glEnable
+from pyglet.gl import (GL_DEPTH_TEST, GL_RGBA, GL_TRIANGLES,
+                       GL_UNSIGNED_BYTE, glClearColor, glEnable,
+                       glReadPixels)
 from pyglet.graphics.shader import Shader, ShaderProgram
 from pyglet.math import Mat4
 
@@ -41,10 +43,13 @@ in vec3 v_world;
 out vec4 final_colors;
 uniform vec3 u_eye;
 uniform vec3 u_fog;       // 必须等于清屏色
+uniform float u_fog_k;    // 雾密度（夜戏更浓）
+uniform vec3 u_tint;      // 全局色调（夜戏压暗偏蓝；默认白）
 void main() {
     float d = distance(v_world, u_eye);
-    float fog = 1.0 - exp(-d * 0.0105);
-    final_colors = vec4(mix(v_col.rgb, u_fog, clamp(fog, 0.0, 1.0)), 1.0);
+    float fog = 1.0 - exp(-d * u_fog_k);
+    vec3 lit = v_col.rgb * u_tint;
+    final_colors = vec4(mix(lit, u_fog, clamp(fog, 0.0, 1.0)), 1.0);
 }'''
 
 
@@ -56,12 +61,34 @@ def md5_of(path):
     return h.hexdigest()
 
 
+def read_pixels(window):
+    """读回帧缓冲原始 RGBA 字节（**已翻转为顶行起始**，与 PNG/视频惯例一致）。
+
+    glReadPixels 的原点在左下（GL 惯例），直接喂 ffmpeg 会得到倒影，
+    故按行翻转。返回 (w, h, bytes)。
+    """
+    import ctypes
+
+    w, h = window.width, window.height
+    row = w * 4
+    buf = (ctypes.c_ubyte * (row * h))()
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+    raw = bytes(buf)
+    flipped = bytearray(row * h)
+    for y in range(h):
+        flipped[y * row:(y + 1) * row] = raw[(h - 1 - y) * row:(h - y) * row]
+    return w, h, bytes(flipped)
+
+
 class OffscreenRenderer:
     """离屏渲染器：一个窗口复用整个帧区间。"""
 
-    def __init__(self, width=1280, height=720, sky=(0.9, 0.85, 0.74), fov=55.0):
+    def __init__(self, width=1280, height=720, sky=(0.9, 0.85, 0.74), fov=55.0,
+                 fog_k=0.0105, tint=(1.0, 1.0, 1.0)):
         self.width, self.height = width, height
         self.sky = sky
+        self.fog_k = fog_k
+        self.tint = tint
         self.window = pyglet.window.Window(width, height, visible=False)
         self.window.switch_to()
         self.program = ShaderProgram(Shader(VERTEX_SRC, 'vertex'),
@@ -74,6 +101,13 @@ class OffscreenRenderer:
     def close(self):
         self.window.close()
 
+    def _apply_uniforms(self, eye):
+        prog = self.program
+        prog['u_eye'] = (eye[0], eye[1], eye[2])
+        prog['u_fog'] = self.sky
+        prog['u_fog_k'] = self.fog_k
+        prog['u_tint'] = self.tint
+
     def render_frame(self, meshes, eye, target, path):
         """画一帧并存 PNG，返回该文件的 md5。"""
         win = self.window
@@ -81,14 +115,34 @@ class OffscreenRenderer:
         win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
         prog = self.program
         prog.use()
-        prog['u_eye'] = (eye[0], eye[1], eye[2])
-        prog['u_fog'] = self.sky
+        self._apply_uniforms(eye)
         win.clear()
         vlist = merge_draw(prog, meshes)
         vlist.draw(GL_TRIANGLES)
         vlist.delete()
         capture(win, path)
         return md5_of(path)
+
+    def render_frame_raw(self, meshes, eye, target, overlays=None):
+        """画一帧并返回原始 RGBA 字节（供 raw pipe 直喂 ffmpeg）。
+
+        overlays：可选的屏幕空间叠加层列表（字幕等），在 3D 之后、
+        读回之前绘制（正交投影，见 SubtitleTrack.draw）。
+        """
+        win = self.window
+        win.switch_to()
+        win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
+        prog = self.program
+        prog.use()
+        self._apply_uniforms(eye)
+        win.clear()
+        vlist = merge_draw(prog, meshes)
+        vlist.draw(GL_TRIANGLES)
+        vlist.delete()
+        if overlays:
+            for ov in overlays:
+                ov.draw(win)
+        return read_pixels(win)
 
 
 def frame_path(out_dir, frame):
@@ -124,6 +178,57 @@ def write_manifest(manifest, path, meta=None):
         data['meta'] = meta
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
+
+
+def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
+                ffmpeg='ffmpeg', crf=20, on_progress=None, audio=None):
+    """raw pipe 直喂 ffmpeg：帧缓冲原始字节走 stdin，**无中间 PNG**。
+
+    P0 的 PNG 路径 ~1.5fps@720p（zlib 压缩 3.7MB/帧是瓶颈）；本路径把
+    编码整个交给 ffmpeg 的 C 实现，实测数量级提升（见 bench）。
+    可选 audio：音轨文件路径，ffmpeg -i 混入（-shortest）。
+    返回 {frame: md5}（帧级 md5 用于确定性验收；内容 = 翻转后 RGBA 字节）。
+    """
+    w, h = size
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    os.makedirs(out_dir, exist_ok=True)
+    cmd = [ffmpeg, '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba',
+           '-s', f'{w}x{h}', '-r', str(fps), '-i', '-']
+    if audio:
+        cmd += ['-i', audio, '-c:a', 'aac', '-shortest']
+    cmd += ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', str(crf),
+            out_path]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    r = OffscreenRenderer(w, h, sky=scene.SKY,
+                          fog_k=getattr(scene, 'FOG_K', 0.0105),
+                          tint=getattr(scene, 'TINT', (1.0, 1.0, 1.0)))
+    manifest = {}
+    overlays_fn = getattr(scene, 'overlays', None)
+    try:
+        for frame in range(start, end):
+            t = frame / float(fps)
+            eye, target = scene.camera(t)
+            meshes = scene.meshes(t)
+            overlays = overlays_fn(t) if overlays_fn else None
+            _, _, raw = r.render_frame_raw(meshes, eye, target, overlays)
+            manifest[frame] = hashlib.md5(raw).hexdigest()
+            try:
+                proc.stdin.write(raw)
+            except BrokenPipeError:
+                err = proc.stderr.read().decode('utf-8', 'ignore')
+                raise RuntimeError(f'ffmpeg pipe broke:\n{err[-2000:]}')
+            if on_progress is not None:
+                on_progress(frame, end)
+    finally:
+        r.close()
+        proc.stdin.close()
+        err = proc.stderr.read().decode('utf-8', 'ignore')
+    if proc.wait() != 0:
+        raise RuntimeError(f'ffmpeg failed:\n{err[-2000:]}')
+    if not os.path.isfile(out_path) or os.path.getsize(out_path) == 0:
+        raise RuntimeError(f'ffmpeg produced no output: {out_path}')
+    return manifest
 
 
 def assemble(frames_dir, out_path, fps=30, ffmpeg='ffmpeg', crf=20):

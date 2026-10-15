@@ -56,14 +56,14 @@ class Rig:
         """t -> {段名: Mat4}（纯函数；确定性由调用方用量化后的 t 保证）。"""
         raise NotImplementedError
 
-    def meshes(self, t):
+    def meshes(self, t, **pose_kw):
         """t -> 该角色的 MeshData 列表（已烘世界变换）。
 
+        pose_kw 透传给 pose()（如 Quadruped 的 mode/speed/phase0）。
         基矩阵 = T(origin) @ Ry(yaw)：先搬到世界位置、再绕自身竖轴转向，
-        于是各段的局部旋转（roll/pitch）发生在**角色自身坐标系**里
-        （云玎的侧倾 roll 才是绕自身纵轴，而不是绕世界 Z）。
+        于是各段的局部旋转（roll/pitch）发生在**角色自身坐标系**里。
         """
-        pose = self.pose(t)
+        pose = self.pose(t, **pose_kw)
         base = Mat4.from_translation(self.origin) @ \
             Mat4.from_rotation(self.yaw, Vec3(0.0, 1.0, 0.0))
         out = []

@@ -39,7 +39,7 @@ class Calf(Rig):
     def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0):
         super().__init__(origin=origin, yaw=yaw)
 
-    def pose(self, t):
+    def pose(self, t, **_kw):
         """伏地挣扎：躯干侧摇、低头、尾抽动、后腿蹬踏。
 
         轴向约定（角色局部）：+X 前 / +Y 上 / +Z 右侧。

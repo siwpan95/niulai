@@ -21,7 +21,8 @@ ROOT = os.path.dirname(HERE)
 def render_into(out_dir, frames):
     cmd = [sys.executable, '-m', 'niulai', 'render',
            '--act', 'act0_prologue', '--start', '0', '--end', str(frames),
-           '--size', '320x200', '--out', out_dir]
+           '--size', '320x200', '--out', out_dir,
+           '--manifest', os.path.join(out_dir, 'manifest.json')]
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
     if proc.returncode != 0:
         raise RuntimeError(f'render failed:\n{proc.stdout}\n{proc.stderr}')

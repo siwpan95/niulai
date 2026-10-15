@@ -83,7 +83,7 @@ class Skylark(Rig):
         self.roll = flight_roll(t)
         return self
 
-    def pose(self, t):
+    def pose(self, t, **_kw):
         flap = math.sin(TAU * perf.BIRD_FLAP_HZ * t) * perf.BIRD_FLAP_AMP
         bob = 0.05 * math.sin(TAU * perf.BIRD_FLAP_HZ * t + 0.8)
         return {

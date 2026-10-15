@@ -68,9 +68,14 @@ def _smooth(e0, e1, x):
 # 幕末绿地（牛来躺卧处，云玎降落点附近）
 GRASS_CENTER = (64.0, -18.0)
 GRASS_RADIUS = 26.0
+# 河流：沿 z=RIVER_Z 横贯场景的谷地（渡口在 x=10 附近；歪脖子树在 (10, 58) 北岸）
+RIVER_Z = 54.0
+RIVER_HALF_W = 9.0
+WATER_Y = 0.15
 # 干河谷：沿 z = 60*sin(x*0.012) 的波形下切
 WADI_AMP, WADI_FREQ = 3.2, 0.012
 LIGHT_DIR = (0.42, 0.78, 0.30)
+WATER_COLOR = (0.32, 0.42, 0.48)
 
 
 def grass_mask(wx, wz, seed=0):
@@ -92,6 +97,8 @@ def height_at(wx, wz, seed):
     dune = _fbm(wx * 0.0125 + 3.1, wz * 0.0125 - 1.7, seed, 4)
     ridge = 1.0 - abs(2.0 * dune - 1.0)                    # 折叠出沙丘脊线
     h = 7.5 * ridge ** 1.6
+    # 河流谷地：沿 z=RIVER_Z 横贯下切（渡口段）
+    h -= 5.0 * max(0.0, 1.0 - abs(wz - RIVER_Z) / (RIVER_HALF_W + 3.0))
     # 干河谷：沿波形带下切
     cz = 60.0 * math.sin(wx * WADI_FREQ)
     h -= WADI_AMP * max(0.0, 1.0 - abs(wz - cz) / 9.0)
@@ -170,3 +177,24 @@ def build_terrain(seed, grid=192, step=1.0):
                             z0 if k in (a, b) else z1))
                 col.extend(cols[k])
     return MeshData(pos.tolist(), colors=col.tolist(), name='desert'), heights
+
+
+def build_river(seed=0, half_extent=110.0, step=2.0):
+    """河面：沿 z=RIVER_Z 的长条水面（静态 MeshData，粗粝平光）。
+
+    顶点色带轻微条纹噪声（"水"的暗示），不吃光照。
+    """
+    import array as _array
+    pos = _array.array('f')
+    col = _array.array('f')
+    n = int(half_extent * 2 / step)
+    for i in range(n):
+        x0, x1 = -half_extent + i * step, -half_extent + (i + 1) * step
+        shade = 0.85 + 0.3 * _hash01(i, 7, seed + 5150)
+        c = (WATER_COLOR[0] * shade, WATER_COLOR[1] * shade,
+             WATER_COLOR[2] * shade, 1.0)
+        z0, z1 = RIVER_Z - RIVER_HALF_W, RIVER_Z + RIVER_HALF_W
+        for (x, z) in ((x0, z0), (x1, z0), (x1, z1), (x0, z0), (x1, z1), (x0, z1)):
+            pos.extend((x, WATER_Y, z))
+            col.extend(c)
+    return MeshData(pos.tolist(), colors=col.tolist(), name='river')

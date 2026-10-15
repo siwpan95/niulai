@@ -3,6 +3,49 @@
 本项目所有值得注意的变更都会记录在此文件中。
 格式基于 Keep a Changelog，版本号遵循语义化版本。
 
+## [0.2.0] - 2026-10-16
+
+### Added（P1 · 主体四幕 + allin 全量接入）
+
+- **渲染管线升级**：`pipeline/render.py` 新增 raw pipe 直喂 ffmpeg（`render_pipe`）——
+  帧缓冲原始字节走 stdin，跳过高压缩 PNG；实测 1.9 → 25.3 fps@720p（**13.3×**）。
+  帧级 md5 清单（manifest）保留，确定性验收不变。
+- **对白字幕系统**（`acts/subtitles.py`）：SubtitleTrack + SubtitleOverlay；
+  正交投影 + view 置单位矩阵画 HUD（只换 projection 会出巨大斜带——实测踩坑）；
+  四幕台词库对齐原片（wikiquote 来源，同人学习口径）。
+- **allin-engine 全量接入**：
+  - `brains/world.py` CastWorld：ECS 实体注册表 + Transform/CastState 组件 + 快照读取（单向数据流）；
+  - `brains/migration.py`：牛群迁徙编队（领队路径 + 6×6 槽位 + 确定性抖动），HERD_SIZE=36（口径 30-50）；
+  - `brains/wolves.py`：狼群三阶段态势纯函数 + CombatEngine 固定种子无头战斗（31 节拍驱动总攻编排）；
+  - `bridge/events.py`：niulai ↔ allin EventBus 扇出（修复双重投递：本地监听不再重复注册总线）。
+- **角色阵容**：`cast/quadruped.py` 规格驱动四足骨架（枢轴在髋的摆步、站/走/跑/卧四姿态）、
+  `cast/specs.py`（牛妈妈/豹拉/狼三规格）、`cast/snake.py`（9 段蠕动草蛇）、
+  `scenery/tree.py`（歪脖子树——第四幕地标 + 第六幕呼应锚点）、
+  `scenery/desert.py` 新增河流谷地 + 水面。
+- **程序化 OST 三主题**（`audio/ost.py`）：迁徙/友情/狼袭，allin MusicPattern 渲染 180s WAV，随幕混音。
+- **四幕**：act1_stand（清晨母子，含牛来"站不起来"包络测试）、act2_migration（36 头牛群编队渡河）、
+  act3_leopard（初遇/分奶/约法三章/分离）、act4_wolves（夜戏 tint、树下决战、母亲牺牲 CastState 事件）。
+- **TTS 配音口径落地前置**：docs/TTS试水报告.md（SAPI Huihui 离线 + edge-tts 在线双通路）。
+
+### Fixed
+
+- 四足腿长与躯高不配（蹄陷地 0.39）→ body_y = 腿长 + 躯干半高 + 0.02；
+- 四足摆步绕脊柱转（风车腿）→ 枢轴模型重定：几何只挂枢轴、位置全在姿态矩阵；
+- 牛来半个身子埋进绿地 → 贴地计算（CALF_BELLY_CLEAR=0.61，蹄恰着地）；
+- 低头时口鼻扎草皮 → droop 收敛至 -0.26+0.14w；
+- 云雀航线 z 蜿蜒带 ±46 飞不到绿地 → 起终点插值 + 小幅蜿蜒；
+- 字幕 HUD 巨大斜带 → 补 view=Mat4()（两个矩阵都要换）；
+- 总攻相机扎进狼群（狼头占满画面）→ 距离 > 狼群环半径 + 余量；
+- 牛群营地/歪脖子树扎进河里 → 按实测河床剖面（z≤61 水下）移至北岸干地；
+- `Mat4.perspective_projection` 实参是 (aspect, ...) 不是 (w, h, ...)。
+
+### Verified
+
+- 冒烟测试 **85 项全绿**（新增：群体规模口径/编队确定性/战斗节拍确定性/字幕时间窗/OST 渲染）；
+- 跨进程确定性：pipe 路径两次渲染逐帧 md5 相同（DETERMINISM_OK）；
+- 渲染基准：25.3 fps@720p（PNG 路径 1.9 fps）；
+- 四幕 proof 切片逐帧目检通过（composition/字幕/夜戏可读性）。
+
 ## [0.1.0] - 2026-10-15
 
 ### Added（P0 · 基建与管线验证）
