@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "niulai"
+version = "0.1.0"
+description = "《牛来》双引擎复刻工程 — world3d(3dworld) 渲染演出 + allin_engine 逻辑智能"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "siwpan" }]
+keywords = ["animation", "film", "pyglet", "replication", "niulai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Graphics :: 3D Rendering",
+]
+dependencies = [
+  "3dworld>=0.1.0",
+  "allin-engine>=1.0.0",
+]
+
+[project.optional-dependencies]
+# P1 起：程序化 OST / 音效合成
+audio = ["numpy>=1.24", "scipy>=1.10"]
+# TTS 试水（P0 报告见 docs/TTS试水报告.md）
+tts = ["pyttsx3", "edge-tts"]
+dev = ["ruff>=0.17.0"]
+
+[project.urls]
+Homepage = "https://gitee.com/siwpan/niulai"
+Source = "https://gitee.com/siwpan/niulai"
+
+[tool.setuptools.packages.find]
+include = ["niulai*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["F", "E9"]

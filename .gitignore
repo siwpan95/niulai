@@ -1,0 +1,12 @@
+# -*- coding: utf-8 -*-
+"""P0/P1/P2 产物目录、成片中间帧、本地缓存 —— 一律不入仓。"""
+.venv/
+__pycache__/
+*.pyc
+output/
+*.mp4
+*.wav
+*.mp3
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

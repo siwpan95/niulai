@@ -1,0 +1,13 @@
+# 统一行尾为 LF（跨平台协作；Python 源码不接受 CRLF 漂移）
+* text=auto eol=lf
+
+# Windows 批处理保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制不归一
+*.png binary
+*.mp4 binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
