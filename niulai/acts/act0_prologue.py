@@ -46,6 +46,7 @@ class PrologueScene:
 
     def __init__(self, seed, grid=192, step=1.0):
         self.timeline = Timeline()
+        self.T0 = self.timeline.act_bounds(self.NAME)[0]  # 幕起点（全片秒）
         self.terrain_md, self.heights = desert.build_terrain(seed, grid, step)
         self.grid, self.step = grid, step
         # 躯干高度贴地计算（绿地整平高程 0.9~1.4，写死会把牛来埋进地里）

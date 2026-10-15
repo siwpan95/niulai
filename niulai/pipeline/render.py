@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import subprocess
+import threading
 
 import pyglet
 from pyglet.gl import (GL_DEPTH_TEST, GL_RGBA, GL_TRIANGLES,
@@ -195,19 +196,37 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
     cmd = [ffmpeg, '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba',
            '-s', f'{w}x{h}', '-r', str(fps), '-i', '-']
     if audio:
+        # 音轨必须是**有限**文件（audio/prepare.py 预制到精确时长）——
+        # 现场 -stream_loop -1 会让音轨时间轴狂奔、mux 错乱（实测踩坑）
         cmd += ['-i', audio, '-c:a', 'aac', '-shortest']
     cmd += ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', str(crf),
             out_path]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    # stderr 必须**并发按块排空**：ffmpeg 的 stats 进度行是 \r 结尾（不是 \n），
+    # 用 `for line in` 迭代会卡在等一个永远不来的换行符；灌满 64KB 管道缓冲后
+    # 互赌死锁（Python 阻塞写 stdin / ffmpeg 阻塞写 stderr）——
+    # P1 全幕渲染两轮 5 小时 + 14 分钟零进展都是这么死的（实测踩坑两次）
+    err_chunks = []
+
+    def _drain():
+        while True:
+            chunk = proc.stderr.read1(65536)   # 有数据即返回，不等换行
+            if not chunk:
+                break
+            err_chunks.append(chunk)
+
+    drain = threading.Thread(target=_drain, daemon=True)
+    drain.start()
     r = OffscreenRenderer(w, h, sky=scene.SKY,
                           fog_k=getattr(scene, 'FOG_K', 0.0105),
                           tint=getattr(scene, 'TINT', (1.0, 1.0, 1.0)))
     manifest = {}
     overlays_fn = getattr(scene, 'overlays', None)
+    t0 = getattr(scene, 'T0', 0.0)      # 全片帧号 -> 幕内时间
     try:
         for frame in range(start, end):
-            t = frame / float(fps)
+            t = frame / float(fps) - t0
             eye, target = scene.camera(t)
             meshes = scene.meshes(t)
             overlays = overlays_fn(t) if overlays_fn else None
@@ -223,7 +242,8 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
     finally:
         r.close()
         proc.stdin.close()
-        err = proc.stderr.read().decode('utf-8', 'ignore')
+        drain.join(timeout=10)
+    err = b''.join(err_chunks).decode('utf-8', 'ignore')
     if proc.wait() != 0:
         raise RuntimeError(f'ffmpeg failed:\n{err[-2000:]}')
     if not os.path.isfile(out_path) or os.path.getsize(out_path) == 0:

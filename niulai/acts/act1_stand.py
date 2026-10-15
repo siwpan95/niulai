@@ -62,6 +62,7 @@ class StandScene:
 
     def __init__(self, seed=MASTER_SEED, grid=192):
         self.timeline = Timeline()
+        self.T0 = self.timeline.act_bounds(self.NAME)[0]  # 幕起点（全片秒）
         self.seed = seed
         self.ground = lambda x, z: desert.height_at(x, z, seed)
         self.terrain_md, _ = desert.build_terrain(seed, grid, 1.0)
