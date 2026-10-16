@@ -37,6 +37,14 @@ SCENES = {
 
 def _cmd_render(args):
     scene_cls = SCENES[args.act]
+    # 门禁：渲染帧区间必须落在该幕的帧区间内（防帧号错位——
+    # P2 全幕曾把 act5 尾部帧号当 act6 渲染，产出 74 分钟错片后才被发现）
+    tl = Timeline()
+    a0, a1 = tl.act_frames(args.act)
+    if args.start < a0 or args.end > a1 or args.end <= args.start:
+        raise SystemExit(
+            f'frame range {args.start}-{args.end} outside act {args.act} '
+            f'[{a0}, {a1}) — check ACTS table (T0 x fps)')
     w, h = (int(x) for x in args.size.lower().split('x'))
     scene = scene_cls(seed=args.seed)
     n = args.end - args.start
