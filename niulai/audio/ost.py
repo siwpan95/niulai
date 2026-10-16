@@ -51,8 +51,18 @@ THEME_FRIEND.notes, THEME_FRIEND.durations = _phrase(
 THEME_WOLVES.notes, THEME_WOLVES.durations = _phrase(
     [0, 0, 1, 0, None, 0, 1, 2, 1, 0], beats=0.25)
 
+# ---- 片尾主题（致敬《雨后清风有香》气质的程序化民谣；非原曲）----
+THEME_CREDITS = MusicPattern(
+    name='雨后清风', notes=[], durations=[],
+    bpm=64, loop=True, osc_type=OscType.SINE, volume=0.20,
+    env_shape=EnvShape.PAD, vibrato_rate=4.0, vibrato_depth=0.10,
+    harmonics=[(2.0, 0.20), (3.0, 0.08)],
+)
+THEME_CREDITS.notes, THEME_CREDITS.durations = _phrase(
+    [0, None, 2, None, 4, None, 3, 2, None, 1, None, 0, None, None], beats=0.9)
+
 THEMES = {'migration': THEME_MIGRATION, 'friend': THEME_FRIEND,
-          'wolves': THEME_WOLVES}
+          'wolves': THEME_WOLVES, 'credits': THEME_CREDITS}
 
 
 def render_theme(name, out_path, duration_sec=30.0):

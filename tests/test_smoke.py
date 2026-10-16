@@ -216,11 +216,87 @@ def test_ost():
         check('OST 渲染非空', os.path.getsize(p) > 10000)
 
 
+def test_loop_assertion():
+    """全片眼：act6 开幕与 act1 开幕**同一构图**（机位 + 角色位置逐分量复位）。"""
+    print('test_loop_assertion')
+    from niulai.acts.act1_stand import StandScene
+    from niulai.acts.act6_wake import WakeScene
+    a1 = StandScene(seed=MASTER_SEED, grid=48)
+    a6 = WakeScene(seed=MASTER_SEED, grid=48)
+    # 机位（t=0）
+    e1, t1 = a1.camera(0.0)
+    e6, t6 = a6.camera(0.0)
+    check('开幕机位 eye 复位', max(abs(e1[k] - e6[k]) for k in range(3)) < 1e-6,
+          f'{e1} vs {e6}')
+    check('开幕机位 target 复位', max(abs(t1[k] - t6[k]) for k in range(3)) < 1e-6)
+    # 角色位置（牛来/妈妈/云雀）
+    for who in ('niulai', 'mother', 'yundi'):
+        p1 = a1.cast.get_pose(who) if who in a1.cast else None
+        m1 = a1.meshes(0.0)
+        m6 = a6.meshes(0.0)
+    # 以 meshes 的 AABB 中心粗比（同 seed 同地形，角色同位置 -> 合并 AABB 应一致）
+    from niulai.cast.rig import bounds_of
+    lo1, hi1 = bounds_of(m1)
+    lo6, hi6 = bounds_of(m6)
+    d = max(max(abs(lo1[k] - lo6[k]), abs(hi1[k] - hi6[k])) for k in range(3))
+    check('开幕合并 AABB 复位', d < 0.35, f'max delta {d:.3f}')
+    # act6 的 T0 与 act1 的 T0 差 = act1 时长（时间轴连续性）
+    check('act1/act6 时间轴相接', abs(a1.T0 - 360.0) < 1e-9
+          and abs(a6.T0 - 4080.0) < 1e-9)
+
+
+def test_rise_envelope():
+    """奋力站起：躯干抬升单调、蹄不离地、站定后高于趴卧。"""
+    print('test_rise_envelope')
+    from niulai.acts.act6_wake import WakeScene
+    from niulai.cast.rig import bounds_of
+    from pyglet.math import Vec3
+    sc = WakeScene(seed=MASTER_SEED, grid=48)
+    g = sc.ground
+    tops = []
+    for u in (0.0, 0.25, 0.5, 0.75, 1.0):
+        sc.calf.scale = 1.0 + 0.12 * u
+        oy = g(60.0, -14.0) + 0.61          # 场景同款：origin 恒定
+        sc.calf.origin = Vec3(60.0, oy, -14.0)
+        # t=0：摇摆相位归零，包络判定不受 sway 干扰
+        ms = sc.calf.meshes(0.0, mode='rise', rise_u=u)
+        lo2, hi2 = bounds_of(ms)
+        check(f'rise u={u} 蹄不离地', lo2[1] <= g(60.0, -14.0) + 0.06,
+              f'bottom={lo2[1]:.3f} ground={g(60.0, -14.0):.3f}')
+        # 躯干（PARTS 首个 = body）顶部才是 rise 的正主（合并 AABB 会被
+        # 耳朵随低头角度的几何噪声主导）
+        blo, bhi = bounds_of([ms[0]])
+        tops.append(bhi[1])
+    check('rise 躯干单调抬升', all(tops[i] <= tops[i + 1] + 1e-6
+                                  for i in range(len(tops) - 1)),
+          f'{[round(t, 2) for t in tops]}')
+    check('rise 站定高于趴卧', tops[-1] > tops[0] + 0.15)
+
+
+def test_atmosphere():
+    """act5 大气关键帧：白昼->夜->黎明，且清屏色==雾色约定不变。"""
+    print('test_atmosphere')
+    from niulai.acts.act5_finale import ATMOS_KEYS, _atmosphere
+    sky0, fk0, tn0 = _atmosphere(0.0)
+    check('大气起点=白昼', sky0 == ATMOS_KEYS[0][1])
+    skyN, fkN, tnN = _atmosphere(900.0)
+    check('大气终点=黎明', skyN == ATMOS_KEYS[-1][1])
+    night = _atmosphere(400.0)
+    check('深夜压暗', sum(night[0]) < sum(sky0) * 0.4,
+          f'night sky sum {sum(night[0]):.2f}')
+    # 单调推进检查：白昼 -> 夜 -> 黎明 的亮度 U 形
+    b0 = sum(_atmosphere(0.0)[0])
+    bn = sum(_atmosphere(400.0)[0])
+    b1 = sum(_atmosphere(900.0)[0])
+    check('大气亮度 U 形（昼-夜-晨）', bn < b0 and bn < b1 and b1 < b0)
+
+
 def main():
     for fn in (test_timeline, test_quantize, test_calf_cannot_stand,
                test_skylark_flight, test_desert, test_scene_camera,
                test_bridge_minimal, test_herd_and_pack,
-               test_battle_determinism, test_subtitles, test_ost):
+               test_battle_determinism, test_subtitles, test_ost,
+               test_loop_assertion, test_rise_envelope, test_atmosphere):
         fn()
     print()
     if FAILED:

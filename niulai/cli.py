@@ -18,7 +18,8 @@ import time
 
 from . import FPS, MASTER_SEED, RESOLUTION, TOTAL_DURATION, __version__
 from .acts import (act0_prologue, act1_stand, act2_migration,  # noqa: F401
-                   act3_leopard, act4_wolves)
+                   act3_leopard, act4_wolves, act5_finale, act6_wake,
+                   act7_credits)
 from .pipeline import render as pipe
 from .timeline import ACT_NAMES, Timeline
 
@@ -28,6 +29,9 @@ SCENES = {
     'act2_migration': act2_migration.MigrationScene,
     'act3_leopard': act3_leopard.LeopardScene,
     'act4_wolves': act4_wolves.WolvesScene,
+    'act5_finale': act5_finale.FinaleScene,
+    'act6_wake': act6_wake.WakeScene,
+    'act7_credits': act7_credits.CreditsScene,
 }
 
 

@@ -39,13 +39,16 @@ class Calf(Rig):
     def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0):
         super().__init__(origin=origin, yaw=yaw)
 
-    def pose(self, t, **_kw):
-        """伏地挣扎：躯干侧摇、低头、尾抽动、后腿蹬踏。
+    def pose(self, t, mode='lie', rise_u=0.0, **_kw):
+        """伏地挣扎 / 奋力站起（rise）。
 
         轴向约定（角色局部）：+X 前 / +Y 上 / +Z 右侧。
         低头 = 绕 Z 侧倾（roll）；腿外劈 = 绕 X 纵轴（pitch）；
         腿前后蹬 = 绕 Z 侧轴（roll）。
+        rise_u：0 = 伏地，1 = 站起（躯干抬升、四肢收直、头抬起、微伸展）。
         """
+        if mode == 'rise':
+            return self._pose_rise(t, rise_u)
         w = math.sin(TAU * perf.CALF_WOBBLE_HZ * t)
         head_droop = -0.26 + 0.14 * w          # 低头（幅度收敛：口鼻不扎进草皮）
         kick = 0.22 * max(0.0, math.sin(TAU * 2.6 * t))     # 后腿间歇蹬踏
@@ -64,4 +67,41 @@ class Calf(Rig):
             'leg_bl': part_matrix(pitch=splay, roll=-0.55 - kick),
             'leg_br': part_matrix(pitch=-splay, roll=-0.55 - kick),
             'tail': part_matrix(roll=0.55 + 0.30 * w),
+        }
+
+    def _pose_rise(self, t, u):
+        """奋力站起：躯体组上移 0.17u、腿绕髋顶拉伸（k=1+0.37u）、头抬起。
+
+        关键几何：腿的枢轴在髋顶（局部 y=-0.19），拉伸后蹄的绝对高度
+        恒为 -0.65（= 伏地时的着地点）—— 躯体上移不浮蹄；
+        部件只做"纯 y 增量"平移（x/z 仍由 PARTS 烘焙偏移提供），
+        不重复叠加已烘焙位置（实测踩坑）。
+        """
+        u = min(1.0, max(0.0, u))
+        splay = perf.CALF_LEG_SPLAY * (1.0 - u)
+        wobble = perf.CALF_WOBBLE_AMP * (1.0 + 1.6 * u)
+        sway = math.sin(TAU * perf.CALF_WOBBLE_HZ * t) * wobble
+        head_roll = -0.26 * (1.0 - u)          # 头从低垂抬到平
+        rise = 0.17 * u                         # 躯体组纯 y 增量
+        k = 1.0 + 0.37 * u                      # 腿拉伸系数（绕髋顶）
+        pivot = -0.19                           # 髋顶（腿盒中心 -0.42 + 半高 0.23）
+        return {
+            'body': part_matrix((0.0, rise, 0.0), roll=sway),
+            'belly': part_matrix((0.0, rise, 0.0), roll=sway),
+            'head': part_matrix((0.0, rise, 0.0), roll=head_roll),
+            'muzzle': part_matrix((0.0, rise, 0.0), roll=head_roll),
+            'ear_l': part_matrix((0.0, rise, 0.0), roll=head_roll),
+            'ear_r': part_matrix((0.0, rise, 0.0), roll=head_roll),
+            'tail': part_matrix((0.0, rise, 0.0), roll=0.3),
+            # 四肢：上移 + 绕髋顶拉伸 + 外劈收拢
+            'leg_fl': part_matrix((0.0, rise, 0.0), pitch=splay * 0.8,
+                                  roll=0.55 * (1.0 - u), sy=k, pivot_y=pivot),
+            'leg_fr': part_matrix((0.0, rise, 0.0), pitch=-splay * 0.8,
+                                  roll=-0.55 * (1.0 - u), sy=k, pivot_y=pivot),
+            'leg_bl': part_matrix((0.0, rise, 0.0),
+                                  pitch=-splay * 0.6 - 0.22 * (1.0 - u),
+                                  roll=0.9 * (1.0 - u), sy=k, pivot_y=pivot),
+            'leg_br': part_matrix((0.0, rise, 0.0),
+                                  pitch=splay * 0.6 + 0.22 * (1.0 - u),
+                                  roll=-0.9 * (1.0 - u), sy=k, pivot_y=pivot),
         }

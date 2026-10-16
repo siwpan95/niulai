@@ -109,8 +109,17 @@ class OffscreenRenderer:
         prog['u_fog_k'] = self.fog_k
         prog['u_tint'] = self.tint
 
-    def render_frame(self, meshes, eye, target, path):
+    def apply_atmosphere(self, sky, fog_k, tint):
+        """逐帧更新大气（清屏色必须 == 雾色，否则地平线硬边）。"""
+        self.sky = tuple(sky)
+        self.fog_k = fog_k
+        self.tint = tuple(tint)
+        glClearColor(sky[0], sky[1], sky[2], 1.0)
+
+    def render_frame(self, meshes, eye, target, path, atmosphere=None):
         """画一帧并存 PNG，返回该文件的 md5。"""
+        if atmosphere is not None:
+            self.apply_atmosphere(*atmosphere)
         win = self.window
         win.switch_to()
         win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
@@ -124,12 +133,16 @@ class OffscreenRenderer:
         capture(win, path)
         return md5_of(path)
 
-    def render_frame_raw(self, meshes, eye, target, overlays=None):
+    def render_frame_raw(self, meshes, eye, target, overlays=None,
+                         atmosphere=None):
         """画一帧并返回原始 RGBA 字节（供 raw pipe 直喂 ffmpeg）。
 
         overlays：可选的屏幕空间叠加层列表（字幕等），在 3D 之后、
-        读回之前绘制（正交投影，见 SubtitleTrack.draw）。
+        读回之前绘制（正交投影，见 SubtitleTrack.draw）；
+        atmosphere：(sky, fog_k, tint) 逐帧大气（None = 用构造值）。
         """
+        if atmosphere is not None:
+            self.apply_atmosphere(*atmosphere)
         win = self.window
         win.switch_to()
         win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
@@ -224,13 +237,15 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
     manifest = {}
     overlays_fn = getattr(scene, 'overlays', None)
     t0 = getattr(scene, 'T0', 0.0)      # 全片帧号 -> 幕内时间
+    atm_fn = getattr(scene, 'atmosphere', None)
     try:
         for frame in range(start, end):
             t = frame / float(fps) - t0
             eye, target = scene.camera(t)
             meshes = scene.meshes(t)
             overlays = overlays_fn(t) if overlays_fn else None
-            _, _, raw = r.render_frame_raw(meshes, eye, target, overlays)
+            atm = atm_fn(t) if atm_fn else None
+            _, _, raw = r.render_frame_raw(meshes, eye, target, overlays, atm)
             manifest[frame] = hashlib.md5(raw).hexdigest()
             try:
                 proc.stdin.write(raw)

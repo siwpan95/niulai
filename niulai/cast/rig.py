@@ -16,11 +16,20 @@ from world3d.engine.geometry import MeshData, box
 FACE_SHADE = (0.86, 0.66, 1.00, 0.44, 0.76, 0.76)
 
 
-def part_matrix(pos=(0.0, 0.0, 0.0), yaw=0.0, pitch=0.0, roll=0.0):
-    """欧拉角 + 平移 -> Mat4。约定：局部 +X 为角色前方，yaw 绕 +Y。"""
+def part_matrix(pos=(0.0, 0.0, 0.0), yaw=0.0, pitch=0.0, roll=0.0,
+                sy=1.0, pivot_y=None):
+    """欧拉角 + 平移 -> Mat4。约定：局部 +X 为角色前方，yaw 绕 +Y。
+
+    sy/pivot_y：绕局部 Y=pivot_y 枢轴的 Y 缩放（牛来站起时腿绕髋顶拉伸，
+    蹄的绝对高度不变、躯体上移 —— 见 calf._pose_rise）。
+    """
     m = Mat4.from_rotation(roll, Vec3(0.0, 0.0, 1.0))
     m = m @ Mat4.from_rotation(yaw, Vec3(0.0, 1.0, 0.0))
     m = m @ Mat4.from_rotation(pitch, Vec3(1.0, 0.0, 0.0))
+    if sy != 1.0 and pivot_y is not None:
+        m = m @ Mat4.from_translation(Vec3(0.0, pivot_y, 0.0)) \
+            @ Mat4.from_scale(Vec3(1.0, sy, 1.0)) \
+            @ Mat4.from_translation(Vec3(0.0, -pivot_y, 0.0))
     return Mat4.from_translation(Vec3(*pos)) @ m
 
 
@@ -48,9 +57,10 @@ class Rig:
 
     PARTS = ()
 
-    def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0):
+    def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0, scale=1.0):
         self.origin = Vec3(*origin)
         self.yaw = yaw
+        self.scale = scale          # 整体缩放（牛来"奋力站起"的伸展用）
 
     def pose(self, t):
         """t -> {段名: Mat4}（纯函数；确定性由调用方用量化后的 t 保证）。"""
