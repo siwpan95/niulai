@@ -85,7 +85,8 @@ def test_calf_cannot_stand():
 
 def test_skylark_flight():
     print('test_skylark_flight')
-    p0, p1 = flight_pos(0.5), flight_pos(59.5)
+    # 序幕全幕 360s：5s 与 355s 比（原 60s 窗口已扩为 6 分钟）
+    p0, p1 = flight_pos(5.0), flight_pos(355.0)
     check('末段已下降', p1.y < p0.y - 20.0, f'{p0.y:.1f} -> {p1.y:.1f}')
     # 全程有界（荒漠网格 192x192，世界 [-96, 96]；航线端点在其外但相机防穿地兜底）
     ys = [flight_pos(t * 0.5).y for t in range(120)]

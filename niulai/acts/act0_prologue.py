@@ -29,7 +29,7 @@ CALF_BELLY_CLEAR = 0.61
 CHASE_DIST, CHASE_UP, LOOKAHEAD = 13.0, 4.5, 8.0
 # 双人镜头参数（终态机位）
 DUAL_DIST, DUAL_UP = 9.0, 2.6
-BLEND_T0, BLEND_T1 = 52.0, 60.0
+BLEND_T0, BLEND_T1 = 330.0, 360.0   # 全幕：末 30 秒过渡到双人镜头
 
 
 def _smooth(u):
