@@ -89,6 +89,10 @@ def build_dialogue_track(lines, duration, out_wav, sr=SR, tmpdir=None):
             n += 1
         except Exception as e:       # 单句失败不阻断整轨（记录并继续）
             print(f'  [tts warn] line {n} ({speaker}) failed: {e}')
+    # 对白归一化：SAPI 输出峰值 94% 满幅，压到 0.6（-4.4dBFS）
+    peak = np.abs(buf).max()
+    if peak > 1e-6:
+        buf = buf * (0.6 / peak)
     pcm = (np.clip(buf, -1.0, 1.0) * 32767.0).astype(np.int16)
     with wave.open(out_wav, 'wb') as w:
         w.setnchannels(1)
@@ -117,6 +121,10 @@ def mix_tracks(ost_path, dialogue_path, out_wav, dialogue_gain=1.0):
     mix = np.zeros(length, dtype=np.float32)
     mix[:len(a)] += a
     mix[:len(b)] += b
+    # 母带总闸：超 0.95 峰值整体压回（不削波、保比例）
+    peak = float(np.abs(mix).max())
+    if peak > 0.95:
+        mix = mix * (0.95 / peak)
     pcm = (np.clip(mix, -1.0, 1.0) * 32767.0).astype(np.int16)
     with wave.open(out_wav, 'wb') as w:
         w.setnchannels(1)

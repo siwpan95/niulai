@@ -65,10 +65,31 @@ THEMES = {'migration': THEME_MIGRATION, 'friend': THEME_FRIEND,
           'wolves': THEME_WOLVES, 'credits': THEME_CREDITS}
 
 
-def render_theme(name, out_path, duration_sec=30.0):
-    """渲染主题 WAV（确定性：旋律/包络全静态，无随机源）。"""
+def render_theme(name, out_path, duration_sec=30.0, target_peak=0.5):
+    """渲染主题 WAV（确定性）+ 峰值归一化。
+
+    实测：generate_music_wav 的 volume 字段并不把输出压在低音量，
+    四个主题统一峰值 32021/32767（98% 满幅）——正式混音必须在此
+    归一化到 target_peak（0.5 ≈ -6dBFS），混音总闸再留余量。
+    """
+    import wave
+
+    import numpy as np
     pattern = THEMES[name]
-    return generate_music_wav(pattern, out_path, duration_sec=duration_sec)
+    path = generate_music_wav(pattern, out_path, duration_sec=duration_sec)
+    with wave.open(path, 'rb') as w:
+        sr = w.getframerate()
+        data = np.frombuffer(w.readframes(w.getnframes()),
+                             dtype=np.int16).astype(np.float64)
+    peak = np.abs(data).max()
+    if peak > 0:
+        data = data * (target_peak * 32767.0 / peak)
+    with wave.open(path, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(data.astype(np.int16).tobytes())
+    return path
 
 
 def render_all(out_dir, duration_sec=30.0):
