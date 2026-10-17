@@ -3,6 +3,22 @@
 本项目所有值得注意的变更都会记录在此文件中。
 格式基于 Keep a Changelog，版本号遵循语义化版本。
 
+## [0.4.0] - 2026-10-17
+
+### Added（三任务：TTS 配音 / GPU 实例化 / 过片细修）
+
+- **TTS 配音**：`audio/tts.py`（SAPI Huihui 离线合成、对白轨 t0 精确落位、
+  与 OST 逐样本混合）+ `scripts/voice_mix.py`（六幕 36 句、-c:v copy 重封装）；
+  配音版全片 `牛来_86分钟_全片_1080p_配音版.mp4`。
+- **GPU 实例化**：`pipeline/instanced.py` InstancedBatch（4×vec4 实例列矩阵）；
+  act2/4/7 牛群狼群 crowd(t) 协议；验收：路径内确定性（逐帧 md5）+ 视觉等价
+  （MAD≤3.0≈PSNR>40dB）+ 2.0× 吞吐。顺带修复 Rig scale 未进 base 矩阵。
+- **过片基础设施**：`scripts/contact_sheet.py`（38 镜头联络图，单文件 HTML）。
+- **首轮自审修复**：act2 跃溪镜收紧 4.5 单位（原广角淹没牛来+蛇）；
+  act1 双人镜改越肩对立机位、离场镜高机位拉远。
+- **配音版 v2 全片**：`牛来_86分钟_全片_1080p_配音版_v2.mp4`
+  （act1/act2 重渲 + 重混配音 + 重拼，86:00.02；新旧片同帧 md5 确认修复生效）。
+
 ## [0.3.1] - 2026-10-16
 
 ### Added / Fixed（全片装配实战）
