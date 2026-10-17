@@ -153,13 +153,13 @@ class MigrationScene:
             return base.orbit_eye(c, 0.35 + 0.1 * math.sin(u * 0.3), 5.0, 1.2), c
 
         def cam_leap(u, t):
-            # 名场面：蛇逼近 + 牛来跃溪 —— 蛇与牛来之间的过肩
+            # 名场面：蛇逼跃溪 —— 紧贴牛来的低机位（蛇从画面侧方入画）。
+            # 原 8 单位广角把牛来+蛇淹没在牛群里读不出来（导演自审 P1 级）。
             slots, calf_xy, _, _ = self._formation(t)
             sx, sz = self.snake.path(t)
-            mid = ((calf_xy[0] + sx) / 2, self.ground(calf_xy[0], calf_xy[1]) + 1.0,
-                   (calf_xy[1] + sz) / 2)
-            ang = 0.5 + 0.4 * math.sin(u * 0.25)
-            return base.orbit_eye(mid, ang, 8.0, 2.2), mid
+            ang = math.atan2(sz - calf_xy[1], sx - calf_xy[0]) + 1.35
+            c = (calf_xy[0], self.ground(*calf_xy) + 0.7, calf_xy[1])
+            return base.orbit_eye(c, ang, 4.5, 1.3), c
 
         def cam_crossing(u, t):
             slots, calf_xy, _, _ = self._formation(t)

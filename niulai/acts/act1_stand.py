@@ -113,14 +113,25 @@ class StandScene:
             return base.orbit_eye(bird, 3.6, 3.4, 0.9), bird
 
         def cam_two(u, t):
-            mid = ((calf[0] + mother[0]) / 2, (calf[1] + mother[1]) / 2 + 0.3,
-                   (calf[2] + mother[2]) / 2)
-            ang = -0.7 + 0.3 * math.sin(u * 0.08)
-            return base.orbit_eye(mid, ang, 11.0, 3.4), mid
+            # 双人：机位在**妈妈身后越肩**望向牛来与云玎（原绕牛来转的五镜头
+            # 构图雷同，导演自审 P1 级：本镜改对立机位拉开差别）
+            mdir_x = CALF_AT[0] - MOTHER_AT[0]
+            mdir_z = CALF_AT[1] - MOTHER_AT[1]
+            eye = (MOTHER_AT[0] - mdir_x * 3.5,
+                   self.ground(*MOTHER_AT) + 2.0,
+                   MOTHER_AT[1] - mdir_z * 3.5)
+            mid = ((calf[0] + bird[0]) / 2, (calf[1] + bird[1]) / 2 + 0.2,
+                   (calf[2] + bird[2]) / 2)
+            return eye, mid
 
         def cam_leave(u, t):
-            # 妈妈走向牛群：牛来留在前景，母牛远去
-            return base.orbit_eye(calf, 1.15, 7.5, 1.6), calf
+            # 妈妈走向牛群：高机位拉远（牛来留在前景，母牛远去入画牛群）
+            mx = MOTHER_AT[0] + (HERD_AT[0] - MOTHER_AT[0]) * base.smooth(
+                max(0.0, (t - 190.0)) / 60.0)
+            mz = MOTHER_AT[1] + (HERD_AT[1] - MOTHER_AT[1]) * base.smooth(
+                max(0.0, (t - 190.0)) / 60.0)
+            tgt = (mx, self.ground(mx, mz) + 1.0, mz)
+            return base.orbit_eye(calf, 1.15, 13.0, 5.0), tgt
 
         return [
             base.Shot(0.0, 45.0, cam_wide, '全景：妈妈与牛来'),
