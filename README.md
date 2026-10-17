@@ -98,24 +98,42 @@ P1 四幕 lanczos 升采 1080p；act5-7 原生 1080p；七处过缝帧帧唯一
 
 ## 快速开始
 
-```bat
-:: 安装（本机 venv）
-E:\Python314\python.exe -m venv .venv
-.venv\Scripts\pip install 3dworld allin-engine
-.venv\Scripts\pip install -e .[dev]
+### 0) 环境自举（新机器先跑这一步）
 
-:: 测试
+```bat
+:: 建 venv + 装依赖 + 探测 ffmpeg（不硬编码任何本机专属路径）
+python scripts\bootstrap.py
+python scripts\bootstrap.py --python E:\py313\python.exe   :: 指定解释器
+python scripts\bootstrap.py --ffmpeg E:\ffmpeg\bin\ffmpeg.exe
+
+:: 体检：Python / venv / 依赖 / ffmpeg / 磁盘，输出 PASS-WARN-FAIL 表
+python scripts\check_env.py
+```
+
+`bootstrap` 找不到 ffmpeg 会**打印下载指引并以退出码 1 结束**——不静默失败，
+避免几小时渲染后才在拼装阶段撞墙。`ffmpeg` 也可一次性固化为环境变量：
+
+```bat
+setx NIULAI_FFMPEG E:\ffmpeg\bin\ffmpeg.exe
+```
+
+### 1) 测试 / 看结构
+
+```bat
 .venv\Scripts\python.exe tests\test_smoke.py
 .venv\Scripts\python.exe tests\test_determinism.py --frames 3
+.venv\Scripts\python.exe -m niulai info
+```
 
-:: 渲染序幕前 60s 并拼装 MP4（ffmpeg 路径按本机改；或设 NIULAI_FFMPEG）
+### 2) 渲染序幕前 60s 并拼装 MP4
+
+```bat
 .venv\Scripts\python.exe -m niulai render --act act0_prologue ^
     --start 0 --end 1800 --size 1280x720 --out output\act0_60s ^
     --assemble output\牛来_序幕_荒漠飞雀_60s.mp4 --ffmpeg E:\ffmpeg\bin\ffmpeg.exe
-
-:: 只看结构
-.venv\Scripts\python.exe -m niulai info
 ```
+
+设置过 `NIULAI_FFMPEG` 后可省略 `--ffmpeg`。
 
 ## 目录
 
@@ -128,18 +146,29 @@ niulai/          引擎复刻包
   bridge/          world3d <-> allin 事件桥接
   pipeline/        成片管线：离屏渲染 + PNG 序列 + ffmpeg 拼装
   cli.py           python -m niulai {render,assemble,info}
-tests/           冒烟 + 跨进程确定性
-docs/             分幕脚本 / 借鉴记账 / TTS 试水报告
+tests/           冒烟 + 跨进程确定性 + 实例化
+scripts/         工程脚本
+  bootstrap.py     环境自举（venv + 依赖 + ffmpeg 探测）—— 新机器第一步
+  check_env.py     环境体检（PASS/WARN/FAIL 表，退出码可用于 CI）
+  assemble_final.py 八幕合片 + 全长 OST 混音
+  voice_mix.py     六幕对白 + OST 混音 + 重封装
+  contact_sheet.py 38 镜头联络图（单文件 HTML）
+  bench_render.py  渲染吞吐基准
+docs/             分幕脚本 / 借鉴记账 / TTS 试水报告 / 增强规划
 ```
 
 ## 已知限制（如实列）
 
-- 群体戏渲染 ~5-7 fps@720p（36 头牛 × 13 盒体段的 CPU 合并不便宜）——P1 全幕渲染
-  需 4 小时级；P2 可上 GPU 实例化（world3d engine 层已有先例）
-- SAPI 只有一个中文语音（Huihui），多角色同嗓——按设定保留，或局部换 edge-tts
-- OST 为 180s 循环，长幕会有重复感（P2 做变奏段）
-- act5-7 尚未实现（P2 路线图：传承决战/梦醒而立/片尾）
+- 群体戏渲染 ~5-7 fps@720p（36 头牛 × 13 盒体段的 CPU 合并不便宜）。
+  P3 已交付 GPU 实例化（act2/4/7 群体一次 draw call，2.0× 吞吐），但**块仍串行**——
+  全片 154,800 帧单进程约 5-9 小时；并行化见 `docs/增强规划_P3.md` P3-2
+- SAPI 只有一个中文语音（Huihui），多角色同嗓——按设定保留；
+  多角色方案（edge-tts 映射 / IndexTTS-2.5 时长控制）见 P3-1
+- OST 为 180s 循环，长幕会有重复感（P3-3 做程序化变奏段）
 - 绿地边缘仍有轻微圆形残留（噪声调制后改善，未根治）
+- **环境依赖**：ffmpeg 为拼装硬依赖，本机缺失时 `scripts/check_env.py` 会报 FAIL；
+  无 NVIDIA 独显的机器上，GPU 系方案（神经 TTS / 生成式配乐 / 超分）均不可跑，
+  规划中已标注降级路径
 
 ## 许可
 
