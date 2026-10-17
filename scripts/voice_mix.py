@@ -1,7 +1,14 @@
 # -*- coding: utf-8 -*-
-"""配音混音：六幕对白轨（SAPI Huihui 同嗓设定）+ OST 混合，重封装（不重渲染）。
+"""配音混音：六幕对白轨 + OST 混合，重封装（不重渲染）。
 
 用法：.venv\\Scripts\\python.exe scripts\\voice_mix.py [--acts act1,act2,...]
+                                              [--engine sapi|edge]
+
+引擎（P3-1a）：
+- `sapi`（**默认**）：SAPI Huihui 全片同嗓 —— 原片少对白寓言的既有设定，不静默替换；
+- `edge`：角色 -> 音色映射，一人一嗓（牛妈妈/牛来/牛爸爸/豹拉各一嗓，
+  act5-act6 自动切成年嗓）。需联网 + ffmpeg（edge 只出 mp3，转 wav 走 ffmpeg）；
+  单句失败自动回退 sapi，保证"有网更好、没网也出片"。
 
 流程（每幕）：
 1. LINES -> 对白轨（t0 精确落位，44.1k mono）；
@@ -47,14 +54,16 @@ ACTS = {
 }
 
 
-def main(acts=None):
+def main(acts=None, engine='sapi'):
     names = acts or list(ACTS)
     for name in names:
         mod, dur, ost, video, extra = ACTS[name]
-        print(f'== {name}: {len(mod.LINES)} 句台词')
+        print(f'== {name}: {len(mod.LINES)} 句台词 (engine={engine})')
         diag = os.path.join(FINAL, f'_diag_{name}.wav')
+        # act=name：让 act5/act6 自动切成年嗓（牛来/豹拉长大后换音色）
         _, n = tts.build_dialogue_track(mod.LINES, dur, diag,
-                                        tmpdir=os.path.join(FINAL, '_tts_tmp'))
+                                        tmpdir=os.path.join(FINAL, '_tts_tmp'),
+                                        engine=engine, act=name, ffmpeg=FF)
         if ost:
             mid = os.path.join(FINAL, f'_mid_{name}.wav')
             tts.mix_tracks(ost, diag, mid)
@@ -65,7 +74,9 @@ def main(acts=None):
             fin = os.path.join(FINAL, f'_audio_{name}.wav')
             tts.mix_tracks(mixed, extra, fin)
             mixed = fin
-        out_mp4 = os.path.join(FINAL, f'{name}_voice_v4.mp4')
+        # sapi 沿用既有 v4 命名（避免覆盖已交付母带）；edge 单独一份便于 AB 对比
+        suffix = 'v4' if engine == 'sapi' else engine
+        out_mp4 = os.path.join(FINAL, f'{name}_voice_{suffix}.mp4')
         tts.remux(video, mixed, out_mp4, ffmpeg=FF)
         print(f'  -> {out_mp4} ({n} 句合成)')
     print('VOICE_MIX_DONE')
@@ -76,5 +87,9 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--acts', default=None,
                     help='comma list, default all with dialogue')
+    ap.add_argument('--engine', default='sapi', choices=['sapi', 'edge'],
+                    help='sapi = 全片同嗓（默认，离线）; '
+                         'edge = 多角色音色（需联网 + ffmpeg）')
     args = ap.parse_args()
-    main([a.strip() for a in args.acts.split(',')] if args.acts else None)
+    main([a.strip() for a in args.acts.split(',')] if args.acts else None,
+         engine=args.engine)

@@ -162,8 +162,10 @@ docs/             分幕脚本 / 借鉴记账 / TTS 试水报告 / 增强规划
 - 群体戏渲染 ~5-7 fps@720p（36 头牛 × 13 盒体段的 CPU 合并不便宜）。
   P3 已交付 GPU 实例化（act2/4/7 群体一次 draw call，2.0× 吞吐），但**块仍串行**——
   全片 154,800 帧单进程约 5-9 小时；并行化见 `docs/增强规划_P3.md` P3-2
-- SAPI 只有一个中文语音（Huihui），多角色同嗓——按设定保留；
-  多角色方案（edge-tts 映射 / IndexTTS-2.5 时长控制）见 P3-1
+- SAPI 只有一个中文语音（Huihui），多角色同嗓——**默认设定**，保留。
+  多角色配音已作为 opt-in 引擎交付：`python -m niulai.audio.tts --engine edge`
+  或 `scripts/voice_mix.py --engine edge`（角色各一嗓、act5-6 自动切成年嗓、
+  超窗按语速重合成；单句失败自动回退 sapi）。需联网 + ffmpeg
 - OST 为 180s 循环，长幕会有重复感（P3-3 做程序化变奏段）
 - 绿地边缘仍有轻微圆形残留（噪声调制后改善，未根治）
 - **环境依赖**：ffmpeg 为拼装硬依赖，本机缺失时 `scripts/check_env.py` 会报 FAIL；
