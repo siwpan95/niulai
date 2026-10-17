@@ -79,6 +79,7 @@ class WolvesScene:
         # 战斗节拍（固定种子，确定性）
         self.beats = wolves.build_battle_log()
         self.shots = self._build_shots()
+        self.use_instancing = True     # 群体戏 GPU 实例化（等价性测试可关）
 
     # ---------------------------------------------------------------- 走位 --
     def _mother_xy(self, t):
@@ -177,18 +178,21 @@ class WolvesScene:
                 pack[i] = (mx + math.cos(ang) * 9.0, mz + math.sin(ang) * 7.0,
                            yaw, 'run')
         for i, (wx, wz, wyaw, wmode) in enumerate(pack):
-            base.place_quad(self.pack[i], wx, wz, wyaw, self.ground)
-            self.cast.set_pose(f'wolf{i}', wx, self.pack[i].origin.y, wz, wyaw,
-                               mode=wmode)
-        # 背景牛群：夜伏（lie）/ 黎明散去
+            if not self.use_instancing:
+                base.place_quad(self.pack[i], wx, wz, wyaw, self.ground)
+                self.cast.set_pose(f'wolf{i}', wx, self.pack[i].origin.y, wz,
+                                   wyaw, mode=wmode)
+        self._pack = pack
+        # 背景牛群：夜伏（lie）/ 黎明散去（instancing 开时由 crowd() 画）
         herd_mode = 'lie' if t < 720.0 else 'stand'
-        for i, q in enumerate(self.herd):
-            ang = (i / len(self.herd)) * math.tau
-            hx = CAMP[0] + math.cos(ang) * 5.0
-            hz = CAMP[1] + math.sin(ang) * 4.0
-            base.place_quad(q, hx, hz, -1.7, self.ground)
-            self.cast.set_pose(f'herd{i}', hx, q.origin.y, hz, q.yaw,
-                               mode=herd_mode)
+        if not self.use_instancing:
+            for i, q in enumerate(self.herd):
+                ang = (i / len(self.herd)) * math.tau
+                hx = CAMP[0] + math.cos(ang) * 5.0
+                hz = CAMP[1] + math.sin(ang) * 4.0
+                base.place_quad(q, hx, hz, -1.7, self.ground)
+                self.cast.set_pose(f'herd{i}', hx, q.origin.y, hz, q.yaw,
+                                   mode=herd_mode)
         # 妈妈状态事件（牺牲瞬间通过桥接层广播一次）
         if t >= 700.0 and self.cast.entities['mother'].get(
                 CastState).state == 'alive':
@@ -196,15 +200,55 @@ class WolvesScene:
         out = [self.terrain_md, self.river_md, self.tree_md]
         out.extend(self.mother.meshes(tq, mode=mmode, speed=1.2))
         out.extend(self.calf.meshes(tq))
-        for i, (_, _, _, wmode) in enumerate(pack):
-            if t >= 300.0:
-                out.extend(self.pack[i].meshes(tq, mode=wmode, speed=1.3))
-        for q in self.herd:
-            out.extend(q.meshes(tq, mode=herd_mode))
+        if not self.use_instancing:
+            for i, (_, _, _, wmode) in enumerate(pack):
+                if t >= 300.0:
+                    out.extend(self.pack[i].meshes(tq, mode=wmode, speed=1.3))
+            for q in self.herd:
+                out.extend(q.meshes(tq, mode=herd_mode))
         self.cast.set_pose('niulai', nx, self.calf.origin.y, nz, self.calf.yaw)
         self.cast.set_pose('mother', mx, self.mother.origin.y, mz,
                            self.mother.yaw, mode=mmode)
         return out
+
+    def crowd(self, t):
+        """群体戏实例化：卧伏牛群 + 狼群（两组同规格同姿态）。"""
+        if not self.use_instancing:
+            return None
+        tq = Timeline.quantize(t, perf.ANIM_FPS)
+        groups = []
+        # 牛群
+        herd_mode = 'lie' if t < 720.0 else 'stand'
+        pose = self.herd[0].meshes_identity(tq, mode=herd_mode)
+        bases = []
+        for i, q in enumerate(self.herd):
+            ang = (i / len(self.herd)) * math.tau
+            hx = CAMP[0] + math.cos(ang) * 5.0
+            hz = CAMP[1] + math.sin(ang) * 4.0
+            base.place_quad(q, hx, hz, -1.7, self.ground)
+            bases.append(tuple(q._base_matrix()))
+            self.cast.set_pose(f'herd{i}', hx, q.origin.y, hz, q.yaw,
+                               mode=herd_mode)
+        groups.append((pose, bases))
+        # 狼群（300s 后进入；480-700s 追妈妈）
+        pack = wolves.pack_positions(t, center=(TREE_AT[0], TREE_AT[1] - 1.0))
+        if 480.0 <= t < 700.0:
+            mx, mz = self._mother_xy(t)
+            for i, (_, _, yaw, _) in enumerate(pack):
+                ang = (i / len(pack)) * math.tau
+                pack[i] = (mx + math.cos(ang) * 9.0, mz + math.sin(ang) * 7.0,
+                           yaw, 'run')
+        if t >= 300.0:
+            wmode = pack[0][3]
+            pose = self.pack[0].meshes_identity(tq, mode=wmode, speed=1.3)
+            bases = []
+            for i, (wx, wz, wyaw, _) in enumerate(pack):
+                base.place_quad(self.pack[i], wx, wz, wyaw, self.ground)
+                bases.append(tuple(self.pack[i]._base_matrix()))
+                self.cast.set_pose(f'wolf{i}', wx, self.pack[i].origin.y, wz,
+                                   wyaw, mode=wmode)
+            groups.append((pose, bases))
+        return groups
 
     def overlays(self, t):
         return [self._sub.at(t)]

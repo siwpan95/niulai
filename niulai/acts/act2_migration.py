@@ -87,6 +87,7 @@ class MigrationScene:
         self.cast.register('snake')
         self._sub = SubtitleOverlay(SubtitleTrack(LINES))
         self.shots = self._build_shots()
+        self.use_instancing = True     # 群体戏 GPU 实例化（等价性测试可关）
 
     # ---------------------------------------------------------------- 编队 --
     def _formation(self, t):
@@ -104,6 +105,27 @@ class MigrationScene:
             calf_xy = (sx, sz)
         mx, mz, _ = slots[0]
         return slots, calf_xy, (mx, mz), prog
+
+    def crowd(self, t):
+        """群体戏实例化：牛群成员 1+（同规格同姿态，仅 base 不同）。
+
+        返回 [(pose_meshes, bases)]；bases 为列主序 16 元组。
+        关闭开关返回 None（等价性测试用 CPU 路径比对）。
+        """
+        if not self.use_instancing:
+            return None
+        tq = Timeline.quantize(t, perf.ANIM_FPS)
+        slots, _, _, _ = self._formation(t)
+        pose = self.herd[1].meshes_identity(tq, mode='walk', speed=0.8)
+        bases = []
+        for i in range(1, migration.HERD_SIZE):
+            x, z, yaw = slots[i]
+            q = self.herd[i]
+            q.origin = Vec3(x, self.ground(x, z), z)
+            q.yaw = yaw
+            bases.append(tuple(q._base_matrix()))
+            self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw, mode='walk')
+        return [(pose, bases)]
 
     # ---------------------------------------------------------------- 镜头 --
     def _build_shots(self):
@@ -167,11 +189,12 @@ class MigrationScene:
     def meshes(self, t):
         tq = Timeline.quantize(t, perf.ANIM_FPS)
         slots, calf_xy, mother_xy, prog = self._formation(t)
-        # 牛群（编队 + 步行）
-        for i, q in enumerate(self.herd):
-            x, z, yaw = slots[i]
-            base.place_quad(q, x, z, yaw, self.ground)
-            self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw, mode='walk')
+        # 牛群：instancing 开时成员 1+ 由 crowd() 实例化绘制；领队（0 号）始终合并
+        if not self.use_instancing:
+            for i, q in enumerate(self.herd):
+                x, z, yaw = slots[i]
+                base.place_quad(q, x, z, yaw, self.ground)
+                self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw, mode='walk')
         # 妈妈（领队）
         base.place_quad(self.mother, mother_xy[0], mother_xy[1],
                         slots[0][2], self.ground)
@@ -184,8 +207,11 @@ class MigrationScene:
                                 self.ground(*calf_xy) + 0.61, calf_xy[1])
         # 蛇：330s 后在河岸游走
         out = [self.terrain_md, self.river_md]
-        for q in self.herd:
-            out.extend(q.meshes(tq, mode='walk', speed=0.8))
+        if not self.use_instancing:
+            for q in self.herd:
+                out.extend(q.meshes(tq, mode='walk', speed=0.8))
+        else:
+            out.extend(self.herd[0].meshes(tq, mode='walk', speed=0.8))
         out.extend(self.mother.meshes(tq, mode='walk', speed=0.8))
         out.extend(self.calf.meshes(tq))
         if 330.0 <= t < 500.0:

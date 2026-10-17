@@ -66,16 +66,26 @@ class Rig:
         """t -> {段名: Mat4}（纯函数；确定性由调用方用量化后的 t 保证）。"""
         raise NotImplementedError
 
+    def meshes_identity(self, t, **pose_kw):
+        """t -> 姿态几何（**base = 单位阵**）：群体戏实例化的共享几何。"""
+        return self._bake(self.pose(t, **pose_kw), Mat4())
+
     def meshes(self, t, **pose_kw):
         """t -> 该角色的 MeshData 列表（已烘世界变换）。
 
         pose_kw 透传给 pose()（如 Quadruped 的 mode/speed/phase0）。
-        基矩阵 = T(origin) @ Ry(yaw)：先搬到世界位置、再绕自身竖轴转向，
-        于是各段的局部旋转（roll/pitch）发生在**角色自身坐标系**里。
+        基矩阵 = T(origin) @ Ry(yaw) @ S(scale)：先搬到世界位置、再绕自身
+        竖轴转向，各段的局部旋转发生在角色自身坐标系里。
         """
-        pose = self.pose(t, **pose_kw)
-        base = Mat4.from_translation(self.origin) @ \
-            Mat4.from_rotation(self.yaw, Vec3(0.0, 1.0, 0.0))
+        return self._bake(self.pose(t, **pose_kw), self._base_matrix())
+
+    def _base_matrix(self):
+        """T(origin) @ Ry(yaw) @ S(scale)（列主序 Mat4）。"""
+        return Mat4.from_translation(self.origin) @ \
+            Mat4.from_rotation(self.yaw, Vec3(0.0, 1.0, 0.0)) @ \
+            Mat4.from_scale(Vec3(self.scale, self.scale, self.scale))
+
+    def _bake(self, pose, base):
         out = []
         for name, sx, sy, sz, color, off in self.PARTS:
             m = base @ pose[name]

@@ -90,6 +90,7 @@ class OffscreenRenderer:
         self.sky = sky
         self.fog_k = fog_k
         self.tint = tint
+        self._batch_cache = {}          # vertex_count -> InstancedBatch
         self.window = pyglet.window.Window(width, height, visible=False)
         self.window.switch_to()
         self.program = ShaderProgram(Shader(VERTEX_SRC, 'vertex'),
@@ -134,12 +135,14 @@ class OffscreenRenderer:
         return md5_of(path)
 
     def render_frame_raw(self, meshes, eye, target, overlays=None,
-                         atmosphere=None):
+                         atmosphere=None, instanced=None):
         """画一帧并返回原始 RGBA 字节（供 raw pipe 直喂 ffmpeg）。
 
         overlays：可选的屏幕空间叠加层列表（字幕等），在 3D 之后、
         读回之前绘制（正交投影，见 SubtitleTrack.draw）；
-        atmosphere：(sky, fog_k, tint) 逐帧大气（None = 用构造值）。
+        atmosphere：(sky, fog_k, tint) 逐帧大气（None = 用构造值）；
+        instanced：[(pose_meshes, bases), ...] 群体戏实例化组
+        （与 CPU 合并路径输出逐字节一致，见 pipeline/instanced.py）。
         """
         if atmosphere is not None:
             self.apply_atmosphere(*atmosphere)
@@ -153,6 +156,17 @@ class OffscreenRenderer:
         vlist = merge_draw(prog, meshes)
         vlist.draw(GL_TRIANGLES)
         vlist.delete()
+        if instanced:
+            from . import instanced as _inst
+            for pose_meshes, bases in instanced:
+                nv = len(pose_meshes[0].positions) // 3
+                total = sum(len(md.positions) // 3 for md in pose_meshes)
+                batch = self._batch_cache.get(total)
+                if batch is None:
+                    batch = _inst.InstancedBatch(total)
+                    self._batch_cache[total] = batch
+                batch.draw(pose_meshes, bases, eye, self.sky, self.fog_k,
+                           self.tint)
         if overlays:
             for ov in overlays:
                 ov.draw(win)
@@ -238,6 +252,7 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
     overlays_fn = getattr(scene, 'overlays', None)
     t0 = getattr(scene, 'T0', 0.0)      # 全片帧号 -> 幕内时间
     atm_fn = getattr(scene, 'atmosphere', None)
+    crowd_fn = getattr(scene, 'crowd', None)
     try:
         for frame in range(start, end):
             t = frame / float(fps) - t0
@@ -245,7 +260,9 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
             meshes = scene.meshes(t)
             overlays = overlays_fn(t) if overlays_fn else None
             atm = atm_fn(t) if atm_fn else None
-            _, _, raw = r.render_frame_raw(meshes, eye, target, overlays, atm)
+            instanced = crowd_fn(t) if crowd_fn else None
+            _, _, raw = r.render_frame_raw(meshes, eye, target, overlays, atm,
+                                           instanced)
             manifest[frame] = hashlib.md5(raw).hexdigest()
             try:
                 proc.stdin.write(raw)

@@ -71,6 +71,7 @@ class CreditsScene:
             self.cast.register(f'herd{i}')
         self._sub = SubtitleOverlay(SubtitleTrack(LINES, font_size=30))
         self.shots = self._build_shots()
+        self.use_instancing = True     # 群体戏 GPU 实例化（等价性测试可关）
 
     def _layout(self):
         """家庭布局（纯函数，无时间依赖 —— 定格）。"""
@@ -137,14 +138,15 @@ class CreditsScene:
                         ground=self.ground)
         base.place_quad(self.mother, *lay['mother'], yaw=-2.7,
                         ground=self.ground)
-        # 牛群环绕高坡
-        for i, q in enumerate(self.herd):
-            ang = (i / len(self.herd)) * math.tau
-            hx = RISE_AT[0] + math.cos(ang) * 9.0
-            hz = RISE_AT[1] + math.sin(ang) * 7.0
-            base.place_quad(q, hx, hz, -1.8, ground=self.ground)
-            self.cast.set_pose(f'herd{i}', hx, q.origin.y, hz, q.yaw,
-                               mode='stand')
+        # 牛群环绕高坡（instancing 开时由 crowd() 画）
+        if not self.use_instancing:
+            for i, q in enumerate(self.herd):
+                ang = (i / len(self.herd)) * math.tau
+                hx = RISE_AT[0] + math.cos(ang) * 9.0
+                hz = RISE_AT[1] + math.sin(ang) * 7.0
+                base.place_quad(q, hx, hz, -1.8, ground=self.ground)
+                self.cast.set_pose(f'herd{i}', hx, q.origin.y, hz, q.yaw,
+                                   mode='stand')
         # 云雀：终景前飞入画面（260s 后盘旋升高）
         bx, bz = lay['bird']
         if t < 260.0:
@@ -160,8 +162,9 @@ class CreditsScene:
         out.extend(self.mother.meshes(tq, mode='stand'))
         out.extend(self.niulai.meshes(tq, mode='stand'))
         out.extend(self.bird.meshes(tq))
-        for q in self.herd:
-            out.extend(q.meshes(tq, mode='stand'))
+        if not self.use_instancing:
+            for q in self.herd:
+                out.extend(q.meshes(tq, mode='stand'))
         self.cast.set_pose('niulai', lay['niulai'][0], self.niulai.origin.y,
                            lay['niulai'][1])
         self.cast.set_pose('father', lay['father'][0], self.father.origin.y,
@@ -170,6 +173,23 @@ class CreditsScene:
                            lay['mother'][1])
         self.cast.set_pose('yundi', bx, by, bz)
         return out
+
+    def crowd(self, t):
+        """群体戏实例化：环绕牛群（定格场景，姿态恒定）。"""
+        if not self.use_instancing:
+            return None
+        tq = Timeline.quantize(t, perf.ANIM_FPS)
+        pose = self.herd[0].meshes_identity(tq, mode='stand')
+        bases = []
+        for i, q in enumerate(self.herd):
+            ang = (i / len(self.herd)) * math.tau
+            hx = RISE_AT[0] + math.cos(ang) * 9.0
+            hz = RISE_AT[1] + math.sin(ang) * 7.0
+            base.place_quad(q, hx, hz, -1.8, ground=self.ground)
+            bases.append(tuple(q._base_matrix()))
+            self.cast.set_pose(f'herd{i}', hx, q.origin.y, hz, q.yaw,
+                               mode='stand')
+        return [(pose, bases)]
 
     def overlays(self, t):
         return [self._sub.at(t)]
