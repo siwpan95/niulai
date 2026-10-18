@@ -3,6 +3,50 @@
 本项目所有值得注意的变更都会记录在此文件中。
 格式基于 Keep a Changelog，版本号遵循语义化版本。
 
+## [0.6.0] - 2026-10-18
+
+### Added（P5 · 双引擎能力全量拉满 —— 全哥拍板「P5 必须全做」）
+
+- **world3d 贴图/材质子系统（审计 0% 面 → 全用）**：`pipeline/pbr_bridge.py`
+  + `--profile pbr` —— world3d `Renderer` 端到端（MRT -> 程序化天空 ->
+  阴影化 PBR -> SSAO -> Bloom -> 曝光/ACES/暗角合成）；
+  `proctex` 程序化贴图（dune/plaster/brushed/wood_planks/dragon_scale/snow
+  + 自拼水面 fBm）；`material` 金属-粗糙度（河面 BLEND 走渲染器半透明）；
+  `env.LightEnvironment` 每幕太阳/天色 IBL 烘焙 + act4 营火点光；
+  `texproj` 平面/triplanar UV；`scene`/`mesh`/`InstancedMesh`（pbr_inst
+  替换自研群体实例化）；rig 网格命名 `kind:part`（材质映射键）。
+- **深度效果全链（`pipeline/pbr_frame.py`，帧图驱动）**：
+  `framegraph.standard_3d_plan` 编译 + 按计划派发；CSM 3 级阴影
+  （阴影化 PBR 变体 = PBR_FRAG 注入 csm_glsl）；`volumetrics` 高度雾+
+  单次散射（阴影复用 CSM）；`dof` 薄透镜景深；`motionblur` 相机重投影；
+  SSAO；线性距离图（R32F）三效果共用。
+- **allin ECS+BT 闭环**：`brains/btree.py::BrainRig` —— 行为树正式挂
+  `BrainComponent`+`BlackboardComponent`（黑板=单一事实来源）；
+  act4 狼群/act2 牛群全部走实体脑，语义与纯函数一致（测试钉住）。
+- **能力 proof 组**（`tests/test_p5_proofs.py`）：pointcloud+EDL 渲染
+  （跨次逐字节一致）、`physics` 跃溪弧线（确定性抛物线）、`media.ca`
+  规则演化确定性、程序化 GLB 解析。
+- **覆盖实测更新**（`docs/引擎能力审计_2026-10-18.md`）：
+  world3d 8/42≈19% -> **24/42≈57%**（贴图 0% → 全用）；allin ≈22% -> ≈25%。
+  未用项全部记账（不适用/规模阈值/与 allin 二选一）。
+
+### Fixed（P5 实测踩坑，全注释在代码）
+
+- post.composite() 首行 bind_screen 强绑 FB0——复刻 uniform 体进中间目标；
+- 子 pass bind/unbind 把当前 FBO 还原成 0——tonemap 最后绑目标；
+- csm_glsl 自带 uniform 声明（宿主重复声明 = GLSL C1038）；
+- u_csm_split 标量数组整体赋值；纹理单元冲突（CSM 图放 10-12）；
+- world3d FullscreenQuad vec3 布局 vs 自管线 vec2（自建 quad）；
+- WindowBlock 必须从本管线 window 设置（world3d Renderer 无 .window，
+  hasattr 探测永远 None —— 几何画飞只剩天空）；
+- 渲染脚本透传 --profile（pbr 全片重渲用）。
+
+### Verified
+
+- 测试 **12 个模块全绿**（profile 含 pbr 跨进程逐帧一致 + 与 raw 3/3 差异；
+  新增 test_p5_proofs 四项 proof 全过）；
+- pbr 全片重渲（1080p，帧图全链）后台进行，产物口径不变（不入仓不上 Release）。
+
 ## [0.5.0] - 2026-10-18
 
 ### Added（P4 · 内容填充 + 双引擎全量增强 + 本机全片重制）
