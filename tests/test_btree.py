@@ -74,10 +74,40 @@ def test_cow_mode():
     check('同输入同 mode', a == b)
 
 
+def test_ecs_mount():
+    print('test_ecs_mount')
+    from allin_engine.core.ecs import World
+    from niulai.brains.world import CastWorld
+    from niulai.brains import btree as bt
+    cw = CastWorld()
+    for i in range(3):
+        cw.register(f'wolf{i}')
+    rig = bt.BrainRig(cw, ['wolf0', 'wolf1', 'wolf2'], bt.WOLF_TREE_SPEC)
+    inputs = [dict(t=350.0, mother_stamina=0.4, herd_dist=8.0,
+                   assault=True, mother_falling=False, bite_window=True)
+              for _ in range(3)]
+    bbs = rig.tick(inputs)
+    stances = [bb.get('stance') for bb in bbs]
+    check('ECS 挂载产出 stance', all(s == 'charge' for s in stances),
+          f'{stances}')
+    check('与纯函数一致', stances == [bt.wolf_stance(
+        350.0, 0.4, 8.0, True, False)] * 3)
+    # 黑板是实体组件（单一事实来源）
+    bb0 = cw.entities['wolf0'].get(
+        __import__('allin_engine.ai.decision.brain',
+                   fromlist=['BlackboardComponent']).BlackboardComponent
+    ).blackboard
+    check('黑板挂在实体上', bb0.get('stance') == 'charge')
+    # 确定性：同输入再 tick 同结果
+    bbs2 = rig.tick(inputs)
+    check('重复 tick 同结果', [bb.get('stance') for bb in bbs2] == stances)
+
+
 def main():
     test_wolf_determinism()
     test_wolf_transitions()
     test_cow_mode()
+    test_ecs_mount()
     if FAILED:
         print(f'\nFAILED {len(FAILED)}: {FAILED}')
         return 1

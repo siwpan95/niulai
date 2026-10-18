@@ -53,16 +53,19 @@ def run(cmd, **kw):
     return p.returncode
 
 
-def render_act(act, a, b, size, workers):
+def render_act(act, a, b, size, workers, profile=None):
     out_root = os.path.join(ROOT, 'output', 'full', act)
     concat = os.path.join(ROOT, 'output', 'full', f'{act}.mp4')
     t0 = time.perf_counter()
-    rc = run([sys.executable, 'scripts/render_parallel.py',
-              '--act', act, '--start', a, '--end', b,
-              '--size', size, '--seed', MASTER_SEED,
-              '--workers', workers, '--resume',
-              '--ffmpeg', FF, '--concat', concat,
-              '--out', out_root])
+    cmd = [sys.executable, 'scripts/render_parallel.py',
+           '--act', act, '--start', a, '--end', b,
+           '--size', size, '--seed', MASTER_SEED,
+           '--workers', workers, '--resume',
+           '--ffmpeg', FF, '--concat', concat,
+           '--out', out_root]
+    if profile:
+        cmd += ['--profile', profile]
+    rc = run(cmd)
     if rc != 0:
         print(f'[render_all] FAIL {act} (rc={rc})', flush=True)
         return None
@@ -93,6 +96,8 @@ def main():
                     help='comma list, e.g. act2,act4 (default: all)')
     ap.add_argument('--workers', type=int, default=6)
     ap.add_argument('--skip-upscale', action='store_true')
+    ap.add_argument('--profile', default=None,
+                    choices=[None, 'raw', 'enhanced', 'pbr'])
     args = ap.parse_args()
 
     wanted = args.acts.split(',') if args.acts else \
@@ -104,7 +109,8 @@ def main():
             continue
         print(f'\n[render_all] === {act}  frames [{a}, {b})  {size} ===',
               flush=True)
-        concat = render_act(act, a, b, size, args.workers)
+        concat = render_act(act, a, b, size, args.workers,
+                            profile=args.profile)
         if concat is None:
             return 1
         if args.skip_upscale:

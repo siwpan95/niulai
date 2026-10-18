@@ -89,6 +89,10 @@ class MigrationScene:
         self.cast.register('niulai')
         self.cast.register('mother')
         self.cast.register('snake')
+        # P5-5：牛群行为树正式挂 allin ECS（BrainComponent + BlackboardComponent）
+        self._cow_rig = btree.BrainRig(
+            self.cast, [f'herd{i}' for i in range(1, migration.HERD_SIZE)],
+            btree.COW_TREE_SPEC)
         self._sub = SubtitleOverlay(SubtitleTrack(LINES))
         # 氛围粒子（allin fx）：沿走廊三个 z 平面的风沙带（发射点随牛群 x 漂移）
         # + 渡口飞沫（跃溪窗 415-478s，跟牛来）。全部确定性（固定 seed + 固定步长）。
@@ -137,6 +141,19 @@ class MigrationScene:
             return self.snake.path(t)
         return None
 
+    def _cow_modes(self, t):
+        """牛群步态（P5-5：经挂 ECS 实体的行为树决策）-> ['walk'|'stand']。"""
+        snake_xy = self._snake_xy(t)
+        slots, _, _, _ = self._formation(t)
+        inputs = []
+        for i in range(1, migration.HERD_SIZE):
+            x, z, _ = slots[i]
+            d = (((x - snake_xy[0]) ** 2 + (z - snake_xy[1]) ** 2) ** 0.5
+                 if snake_xy else 999.0)
+            inputs.append({'t': t, 'snake_dist': d})
+        bbs = self._cow_rig.tick(inputs)
+        return [bb.get('mode', 'walk') for bb in bbs]
+
     # ---------------------------------------------------------------- 编队 --
     def _formation(self, t):
         """t -> (slots, calf_xy, mother_xy, herd_progress)。"""
@@ -166,12 +183,11 @@ class MigrationScene:
             return None
         tq = Timeline.quantize(t, perf.ANIM_FPS)
         slots, _, _, _ = self._formation(t)
-        snake_xy = self._snake_xy(t)
+        modes = self._cow_modes(t)
         groups = {}
-        for i in range(1, migration.HERD_SIZE):
+        for gi, i in enumerate(range(1, migration.HERD_SIZE)):
             x, z, yaw = slots[i]
-            mode = btree.cow_mode(t, snake_xy, (x, z))
-            groups.setdefault(mode, []).append(i)
+            groups.setdefault(modes[gi], []).append(i)
         out = []
         for mode, idxs in sorted(groups.items()):
             pose = self.herd[1].meshes_identity(tq, mode=mode, speed=0.8)
@@ -253,10 +269,10 @@ class MigrationScene:
         # 牛群：instancing 开时成员 1+ 由 crowd() 实例化绘制；领队（0 号）始终合并。
         # 步态经行为树决策（蛇逼近惊呆立定），CPU 路径逐头按 mode 画。
         if not self.use_instancing:
+            modes = self._cow_modes(t)
             for i, q in enumerate(self.herd):
                 x, z, yaw = slots[i]
-                mode = 'walk' if i == 0 else btree.cow_mode(t, snake_xy,
-                                                            (x, z))
+                mode = 'walk' if i == 0 else modes[i - 1]
                 base.place_quad(q, x, z, yaw, self.ground)
                 self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw,
                                    mode=mode)
@@ -272,9 +288,9 @@ class MigrationScene:
         if not getattr(self, '_wboit', False):
             out.append(self.river_md)      # raw：河面不透明（既定设定）
         if not self.use_instancing:
+            modes = self._cow_modes(t)
             for i, q in enumerate(self.herd):
-                mode = 'walk' if i == 0 else btree.cow_mode(
-                    t, snake_xy, (slots[i][0], slots[i][1]))
+                mode = 'walk' if i == 0 else modes[i - 1]
                 out.extend(q.meshes(tq, mode=mode, speed=0.8))
         else:
             out.extend(self.herd[0].meshes(tq, mode='walk', speed=0.8))

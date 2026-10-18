@@ -123,3 +123,50 @@ def wolf_stances(t, mother_stamina=1.0, herd_dist=999.0, assault=False,
     """t -> [stance] * count（同 t 同世界状态 -> 全群同 stance）。"""
     s = wolf_stance(t, mother_stamina, herd_dist, assault, mother_falling)
     return [s] * count
+
+
+# ---------------------------------------------------------------- ECS 挂载 --
+# P5-5：行为树从"裸 tick"升级为**正式挂 allin ECS 实体**（BrainComponent +
+# BlackboardComponent）——单一事实来源 = 实体黑板，闭环「ECS + BT」全链路。
+# 语义与模块级纯函数**完全一致**（同一 spec、同一输入），不改变渲染结果。
+
+from allin_engine.ai.decision.brain import BrainComponent, \
+    BlackboardComponent  # noqa: E402
+from allin_engine.ai.decision.behavior_tree import BehaviorTree  # noqa: E402
+
+
+class BrainRig:
+    """一类角色的实体脑组：挂树 + 按帧 tick + 从黑板读决策。
+
+    用法::
+
+        rig = BrainRig(cast_world, ['wolf0', 'wolf1'], WOLF_TREE_SPEC)
+        bbs = rig.tick([{'t': 300.0, ...}, {...}])
+        stances = [bb.get('stance') for bb in bbs]
+    """
+
+    def __init__(self, cast_world, who_list, tree_spec, name_prefix='brain'):
+        self.entities = []
+        for who in who_list:
+            e = cast_world.entities[who]
+            e.add(BlackboardComponent())
+            e.add(BrainComponent(tree=BehaviorTree(build_node(tree_spec)),
+                                 name=f'{who}:{name_prefix}'))
+            self.entities.append(e)
+
+    def tick(self, inputs_list):
+        """逐实体：输入全量写入黑板 -> bind -> tick -> 返回黑板列表。
+
+        输入是 (t, 世界状态) 的纯函数 -> 决策确定性不因挂载方式改变。
+        """
+        out = []
+        for e, inputs in zip(self.entities, inputs_list):
+            bb = e.get(BlackboardComponent).blackboard
+            for k, v in inputs.items():
+                bb.set(k, v)
+            brain = e.get(BrainComponent)
+            brain.tree.bind(bb)
+            brain.tree.tick()
+            brain.last_status = str(brain.tree.status)
+            out.append(bb)
+        return out

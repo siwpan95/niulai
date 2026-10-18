@@ -81,12 +81,15 @@ def block_done(prod, manifest, n_frames, png):
     return os.path.isfile(prod) and os.path.getsize(prod) > 0
 
 
-def build_cmd(act, a, b, size, seed, prod, manifest, png, ffmpeg):
+def build_cmd(act, a, b, size, seed, prod, manifest, png, ffmpeg,
+              profile=None):
     """块的渲染命令：复用现有 CLI（门禁/排空线程/确定性都在那里面）。"""
     cmd = [sys.executable, '-m', 'niulai', 'render',
            '--act', act, '--start', str(a), '--end', str(b),
            '--size', size, '--seed', str(seed),
            '--out', prod, '--manifest', manifest]
+    if profile:
+        cmd += ['--profile', profile]
     if png:
         cmd.append('--png')
     else:
@@ -264,6 +267,9 @@ def main(argv=None):
     p.add_argument('--chunk-seconds', type=float,
                    default=DEFAULT_CHUNK_SECONDS)
     p.add_argument('--fps', type=float, default=DEFAULT_FPS)
+    p.add_argument('--profile', default=None,
+                   choices=[None, 'raw', 'enhanced', 'pbr'],
+                   help='渲染 profile（默认走 CLI 的 raw）')
     p.add_argument('--png', action='store_true',
                    help='PNG-sequence blocks (no ffmpeg needed, for '
                         'verification/debug)')

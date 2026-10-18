@@ -24,7 +24,7 @@ from ..cast.calf import Calf
 from ..cast.quadruped import Quadruped
 from ..cast.specs import MOTHER_SPEC, WOLF_SPEC
 from ..brains.world import CastState, CastWorld
-from ..brains import wolves
+from ..brains import btree, wolves
 from ..fx import particles as fx_particles
 from ..fx.layer import ParticleLayer
 from ..scenery import desert, tree as tree_mod
@@ -75,6 +75,10 @@ class WolvesScene:
         self.cast.register('mother')
         for i in range(wolves.WOLF_COUNT):
             self.cast.register(f'wolf{i}')
+        # P5-5：狼群行为树正式挂 allin ECS（BrainComponent + BlackboardComponent）
+        self._wolf_rig = btree.BrainRig(
+            self.cast, [f'wolf{i}' for i in range(wolves.WOLF_COUNT)],
+            btree.WOLF_TREE_SPEC)
         for i in range(6):
             self.cast.register(f'herd{i}')
         self._sub = SubtitleOverlay(SubtitleTrack(LINES))
@@ -105,18 +109,24 @@ class WolvesScene:
     def _wolf_pack(self, t):
         """狼群态势（行为树决策，meshes/crowd 两路共用同一上下文）。
 
-        世界状态：妈妈体力曲线 / 总攻窗(300-480) / 牺牲段(480-700) /
-        狼群环心到妈妈的距离；jitter 每 5 只狼半径 +3u 出几何纵深。
+        P5-5：决策经**挂 ECS 实体的行为树**（BrainRig）产出——黑板是
+        单一事实来源；世界状态：妈妈体力曲线 / 总攻窗(300-480) /
+        牺牲段(480-700) / 狼群环心到妈妈的距离；jitter 每 5 只狼
+        半径 +3u 出几何纵深。
         """
         mx, mz = self._mother_xy(t)
         center = (TREE_AT[0], TREE_AT[1] - 1.0)
         herd_dist = math.hypot(mx - center[0], mz - center[1])
+        inputs = [dict(t=t, mother_stamina=self._mother_stamina(t),
+                       herd_dist=herd_dist,
+                       assault=300.0 <= t < 480.0,
+                       mother_falling=480.0 <= t < 700.0,
+                       bite_window=t >= 12.0)
+                  for _ in range(wolves.WOLF_COUNT)]
+        bbs = self._wolf_rig.tick(inputs)
+        stances = [bb.get('stance', 'circle') for bb in bbs]
         return wolves.pack_positions(
-            t, center=center,
-            mother_stamina=self._mother_stamina(t),
-            herd_dist=herd_dist,
-            assault=300.0 <= t < 480.0,
-            mother_falling=480.0 <= t < 700.0,
+            t, center=center, stances=stances,
             jitter=lambda i: i % 5 == 0)
     def _mother_xy(self, t):
         """妈妈：守夜(营地) -> 引狼(向河北去) -> 留在树下。"""
