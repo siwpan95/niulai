@@ -177,9 +177,18 @@ def run(act, start, end, out_root, size='1280x720', seed=0, workers=2,
                 pass
             i, a, b = job[0], job[1], job[2]
             if proc.returncode != 0:
-                print(f'  [parallel] block {i} ({a}-{b}) FAILED '
-                      f'rc={proc.returncode} (see {job[5]})')
-                failed.append((i, a, b))
+                # 退出码非零不直接判死：实测 Windows 高并发下 CLI 进程
+                # 在**退出阶段**（pyglet GL atexit）偶发 0xC0000409，
+                # 而产物（mp4 + 完整 manifest）已写完——以 block_done()
+                # 的产物完整性为准，完整即视为成功（记账：P4 全片重渲）。
+                n_frames = b - a
+                if block_done(prod, mani, n_frames, png):
+                    print(f'  [parallel] block {i} ({a}-{b}) rc='
+                          f'{proc.returncode} 但产物完整，按成功计')
+                else:
+                    print(f'  [parallel] block {i} ({a}-{b}) FAILED '
+                          f'rc={proc.returncode} (see {job[5]})')
+                    failed.append((i, a, b))
         return still
 
     t0 = time.perf_counter()
