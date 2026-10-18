@@ -44,7 +44,14 @@ ACTS = [
     ('act7_credits', 144000, 154800, '1920x1080'),
 ]
 
-FINAL = os.path.join(ROOT, 'output', 'final')
+# ⚠ profile 必须产物隔离：render_parallel 的 --resume 只看块文件是否存在，
+# 不认 profile。P5 实测踩坑——pbr 全片重渲被 raw 的既有块全部跳过，等于
+# 拿旧 raw 块重新升采（一帧 PBR 都没渲）。非默认 profile 一律走独立目录。
+def dirs_for(profile):
+    """profile -> (块根目录, 终态目录)。raw/None 沿用既有路径。"""
+    tag = '' if profile in (None, 'raw') else f'_{profile}'
+    return (os.path.join(ROOT, 'output', f'full{tag}'),
+            os.path.join(ROOT, 'output', f'final{tag}'))
 
 
 def run(cmd, **kw):
@@ -54,8 +61,9 @@ def run(cmd, **kw):
 
 
 def render_act(act, a, b, size, workers, profile=None):
-    out_root = os.path.join(ROOT, 'output', 'full', act)
-    concat = os.path.join(ROOT, 'output', 'full', f'{act}.mp4')
+    full_root, _ = dirs_for(profile)
+    out_root = os.path.join(full_root, act)
+    concat = os.path.join(full_root, f'{act}.mp4')
     t0 = time.perf_counter()
     cmd = [sys.executable, 'scripts/render_parallel.py',
            '--act', act, '--start', a, '--end', b,
@@ -102,7 +110,11 @@ def main():
 
     wanted = args.acts.split(',') if args.acts else \
         [a[0] for a in ACTS]
-    os.makedirs(FINAL, exist_ok=True)
+    _, final_dir = dirs_for(args.profile)
+    os.makedirs(final_dir, exist_ok=True)
+    if args.profile not in (None, 'raw'):
+        print(f'[render_all] profile={args.profile} -> {final_dir}',
+              flush=True)
 
     for act, a, b, size in ACTS:
         if act not in wanted:
@@ -116,7 +128,7 @@ def main():
         if args.skip_upscale:
             continue
         idx = act.split('_')[0]                # act0 .. act7
-        dst = os.path.join(FINAL, f'{idx}_1080.mp4')
+        dst = os.path.join(final_dir, f'{idx}_1080.mp4')
         if size == '1920x1080':
             rc = remux_copy(concat, dst)
         else:

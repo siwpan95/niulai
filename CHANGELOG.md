@@ -41,6 +41,17 @@
   hasattr 探测永远 None —— 几何画飞只剩天空）；
 - 渲染脚本透传 --profile（pbr 全片重渲用）。
 
+### Fixed（P5 全片重渲暴露的两类坑）
+
+- **`--resume` 不认 profile**：残块检查只看文件是否存在，导致 `--profile pbr`
+  的整片重渲被 raw 既有块全部跳过（一帧 PBR 都没渲，等于拿旧块重新升采）。
+  `render_all.py` 改为 **profile 产物目录隔离**（`output/full_pbr/`、
+  `output/final_pbr/`），resume 只在各自目录内生效。
+- **体积雾地平线黑带**：`u_fog_shafts=0` 时散射只剩深蓝环境项，远处透射率
+  趋 0 → 地平线一条黑带（act0/act2 proof 目检抓回）。改为开单次散射、
+  环境项取该幕天空地平线色、密度 0.012→0.0055；同时给六幕补
+  `ibl_intensity`（原先只有 act2/act4 设了，其余按默认 1.0 → 地形过曝发白）。
+
 ### Verified
 
 - 测试 **12 个模块全绿**（profile 含 pbr 跨进程逐帧一致 + 与 raw 3/3 差异；

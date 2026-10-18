@@ -24,13 +24,12 @@
 """
 
 import math
-import os
 
 from world3d.engine import proctex
 from world3d.engine.env import LightEnvironment
 from world3d.engine.geometry import MeshData
 from world3d.engine.material import Material
-from world3d.engine.mesh import InstancedMesh, Mesh, build_instance_matrix
+from world3d.engine.mesh import InstancedMesh, Mesh
 from world3d.engine.scene import Scene
 from world3d.engine.texproj import UvProjection, dominant_axis, project_uv
 
@@ -61,30 +60,36 @@ DEFAULT_MAT_KEY = 'cow'
 ACT_ENVS = {
     'act0': dict(sun_dir=(0.62, 0.28, 0.30), sun_color=(1.0, 0.82, 0.62),
                  sun_intensity=1.1, sky_zenith=(0.30, 0.42, 0.66),
-                 sky_horizon=(0.86, 0.66, 0.44), sky_ground=(0.30, 0.24, 0.18)),
+                 sky_horizon=(0.86, 0.66, 0.44), sky_ground=(0.30, 0.24, 0.18),
+                 ibl_intensity=0.42),
     'act1': dict(sun_dir=(0.55, 0.42, 0.25), sun_color=(1.0, 0.90, 0.74),
                  sun_intensity=1.2, sky_zenith=(0.34, 0.50, 0.76),
-                 sky_horizon=(0.90, 0.78, 0.58), sky_ground=(0.34, 0.30, 0.22)),
+                 sky_horizon=(0.90, 0.78, 0.58), sky_ground=(0.34, 0.30, 0.22),
+                 ibl_intensity=0.45),
     'act2': dict(sun_dir=(0.30, 0.88, 0.20), sun_color=(1.0, 0.97, 0.90),
                  sun_intensity=1.0, sky_zenith=(0.26, 0.46, 0.78),
                  sky_horizon=(0.62, 0.68, 0.66), sky_ground=(0.36, 0.30, 0.22),
                  ibl_intensity=0.55),
     'act3': dict(sun_dir=(0.72, 0.50, -0.30), sun_color=(1.0, 0.92, 0.78),
                  sun_intensity=1.25, sky_zenith=(0.32, 0.48, 0.76),
-                 sky_horizon=(0.88, 0.76, 0.56), sky_ground=(0.38, 0.32, 0.24)),
+                 sky_horizon=(0.88, 0.76, 0.56), sky_ground=(0.38, 0.32, 0.24),
+                 ibl_intensity=0.45),
     'act4': dict(sun_dir=(-0.30, 0.70, 0.45), sun_color=(0.55, 0.66, 0.90),
                  sun_intensity=0.35, sky_zenith=(0.05, 0.07, 0.13),
                  sky_horizon=(0.12, 0.15, 0.24), sky_ground=(0.04, 0.04, 0.06),
                  ibl_intensity=0.45),
     'act5': dict(sun_dir=(0.80, 0.20, 0.35), sun_color=(1.0, 0.72, 0.46),
                  sun_intensity=1.15, sky_zenith=(0.24, 0.34, 0.58),
-                 sky_horizon=(0.94, 0.58, 0.34), sky_ground=(0.26, 0.18, 0.13)),
+                 sky_horizon=(0.94, 0.58, 0.34), sky_ground=(0.26, 0.18, 0.13),
+                 ibl_intensity=0.48),
     'act6': dict(sun_dir=(0.50, 0.62, 0.28), sun_color=(1.0, 0.94, 0.84),
                  sun_intensity=1.3, sky_zenith=(0.32, 0.52, 0.82),
-                 sky_horizon=(0.86, 0.80, 0.64), sky_ground=(0.38, 0.33, 0.25)),
+                 sky_horizon=(0.86, 0.80, 0.64), sky_ground=(0.38, 0.33, 0.25),
+                 ibl_intensity=0.45),
     'act7': dict(sun_dir=(0.86, 0.14, -0.25), sun_color=(1.0, 0.66, 0.36),
                  sun_intensity=1.05, sky_zenith=(0.22, 0.30, 0.54),
-                 sky_horizon=(0.96, 0.52, 0.28), sky_ground=(0.24, 0.15, 0.10)),
+                 sky_horizon=(0.96, 0.52, 0.28), sky_ground=(0.24, 0.15, 0.10),
+                 ibl_intensity=0.50),
 }
 
 # 每幕点光（≤4 盏；act4 夜袭营火）

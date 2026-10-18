@@ -24,17 +24,15 @@ import math
 import os
 
 from pyglet.gl import (GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
-                       GL_FRAMEBUFFER, GL_LINEAR, GL_NEAREST, GL_R32F,
+                       GL_FRAMEBUFFER, GL_NEAREST, GL_R32F,
                        GL_RED, GL_TEXTURE_2D, GL_TRIANGLES, glBindFramebuffer,
                        glClearColor, glClear, glDisable, glViewport,
                        glEnable, GL_DEPTH_TEST)
 from pyglet.graphics.shader import Shader, ShaderProgram
-from pyglet.math import Mat4, Vec3
+from pyglet.math import Vec3
 
 from world3d.engine import csm, volumetrics, dof as dof_mod, motionblur as mb_mod
 from world3d.engine.mathkit import mat4_from_Mat4, mat4_inverse, mat4_mul
-from world3d.engine.postfx import FullscreenQuad, bind_screen
-from world3d.engine.soft_shadow import pcss_glsl
 from world3d.engine.targets import bind_texture
 
 from .pbr_bridge import PbrPack  # noqa: F401  (re-export 便利)
@@ -169,7 +167,7 @@ class PbrFramePipeline:
         self.n_cascades = _N_CASCADES
         self.focus = 22.0
         self.shutter = 0.55
-        self.fog_density = 0.012
+        self.fog_density = 0.0055     # 消光系数（y=0 处）；0.012 实测糊住远景
         self.prev_vp = None
         self._pos_cache = {}                 # id(md) -> pos vlist（静态复用）
         self._frame_pos_vls = []             # 本帧动态 pos vlist（帧末回收）
@@ -190,7 +188,6 @@ class PbrFramePipeline:
 
     # ------------------------------------------------------------ 资源 --
     def _tex(self, w, h, r32f=False):
-        from pyglet.gl import GL_R32F, GL_NEAREST, GL_RED, GL_TEXTURE_2D
         from pyglet.image import Texture
         from world3d.engine.targets import create_texture
         if r32f:
@@ -317,7 +314,7 @@ class PbrFramePipeline:
             items.append((pm, self._pos_vlist(md, static=pm in
                                               pack.static_meshes())))
         for pose_meshes, bases in (crowd or []):
-            kind = (pose_meshes[0].name or 'cow').split(':')[0]
+            # 材质键由 merged_crowd_geometry 从 pose_meshes[0].name 自带
             merged = pack.merged_crowd_geometry(pose_meshes)
             im = pack.crowd_instanced(merged, bases)
             items.append((im, self._pos_vlist(merged, static=False)))
@@ -407,7 +404,7 @@ class PbrFramePipeline:
             t = self.r.scene_target
             t.bind()
             t.clear(color=(0.03, 0.04, 0.06, 1.0), depth=True)
-        from pyglet.gl import GL_DEPTH_TEST, glEnable
+        from pyglet.gl import GL_DEPTH_TEST
         glEnable(GL_DEPTH_TEST)
         # 天空（程序化天穹 + IBL 环境）
         self.r._draw_sky(self.cam, self.w / max(1.0, float(self.h)))
@@ -493,16 +490,24 @@ class PbrFramePipeline:
         e = self.cam.position
         prog['u_fog_cam'] = (e[0], e[1], e[2])
         prog['u_fog_light_dir'] = self.pack.sun_dir
-        prog['u_fog_light_color'] = self.pack.env.sun_color
-        prog['u_fog_ambient'] = (0.10, 0.12, 0.16)
+        # ⚠ 实测坑：u_fog_shafts=0 时散射只剩环境项（默认深蓝），远处透射率趋 0
+        # 会在地平线画出一条**黑带**（act0/act2 proof 目检抓回）。必须开单次
+        # 散射，且环境项取天空地平线色——雾的颜色得跟天一致才不会断层。
+        env = self.pack.env
+        si = float(getattr(env, 'sun_intensity', 1.0))
+        sc = tuple(getattr(env, 'sun_color', (1.0, 1.0, 1.0)))
+        hz = tuple(getattr(env, 'sky_horizon', (0.7, 0.7, 0.7)))
+        prog['u_fog_light_color'] = (sc[0] * si * 0.55, sc[1] * si * 0.55,
+                                     sc[2] * si * 0.55)
+        prog['u_fog_ambient'] = (hz[0] * 0.55, hz[1] * 0.55, hz[2] * 0.55)
         prog['u_fog_density'] = self.fog_density
-        prog['u_fog_falloff'] = 0.13
+        prog['u_fog_falloff'] = 0.10
         prog['u_fog_base'] = 0.0
-        prog['u_fog_phase_g'] = 0.74
+        prog['u_fog_phase_g'] = 0.72
         prog['u_fog_steps'] = 40.0
         prog['u_fog_max_dist'] = float(self.cam.far)
         prog['u_fog_analytic'] = 1.0
-        prog['u_fog_shafts'] = 0.0
+        prog['u_fog_shafts'] = 1.0
         self._quad_draw(prog)
         t['fbo'].unbind()
 
