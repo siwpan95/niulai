@@ -130,6 +130,12 @@ allin ≈22% → ≈25%**（+BrainComponent ECS 挂载）。逐模块账见
 | **allin ECS+BT（P5-5）** | `brains/btree.py::BrainRig`：行为树挂 `BrainComponent`+`BlackboardComponent`，狼群/牛群走实体脑（黑板=单一事实源） | 与纯函数语义逐值一致（测试钉住） |
 | **能力 proof（P5-6）** | `tests/test_p5_proofs.py`：pointcloud+EDL / physics 跃溪弧线 / media CA / 程序化 GLB | 逐项确定性断言通过 |
 
+**P6 收尾（同日）**：world3d 覆盖再进一步（**32/42 ≈ 76%**）——`fsm` 时间轴
+（act4 阶段，替换 4 处散落阈值）、`serialize`+`scene_build`（八幕场景清单 JSON，
+`output/manifests/`）、`perf`（帧计时）、`frustum`（实例剔除）真接入；
+`skin`/`gpu_cull`/`greedy_mesh`/`orchestration` 走 proof 对拍。
+剩余 10 项逐条记账（不适用/引擎侧未完成/二选一），详见审计 §五。
+
 渲染 profile 三档：`raw`（默认，忠实粗粝）/ `enhanced`（WBOIT+Bloom）/ `pbr`（全量 PBR 帧图）。
 非默认 profile 的产物按目录隔离（`output/full_<profile>`、`output/final_<profile>`），
 `assemble_film.py` / `voice_mix.py` 均支持 `--profile`。

@@ -24,7 +24,7 @@ from ..cast.calf import Calf
 from ..cast.quadruped import Quadruped
 from ..cast.specs import MOTHER_SPEC, WOLF_SPEC
 from ..brains.world import CastState, CastWorld
-from ..brains import btree, wolves
+from ..brains import btree, phases, wolves
 from ..fx import particles as fx_particles
 from ..fx.layer import ParticleLayer
 from ..scenery import desert, tree as tree_mod
@@ -98,11 +98,13 @@ class WolvesScene:
 
         300s 总攻起随消耗下降；480s 引开狼群后急坠；700s 牺牲归零。
         """
-        if t < 300.0:
+        # 阶段边界统一来自 brains/phases（world3d fsm 时间轴）
+        ph = phases.phase_at(t)
+        if ph == 'circle':
             return 1.0
-        if t < 480.0:
+        if ph == 'charge':
             return 1.0 - (t - 300.0) / 180.0 * 0.45
-        if t < 700.0:
+        if ph == 'chase':
             return 0.55 - (t - 480.0) / 220.0 * 0.55
         return 0.0
 
@@ -119,8 +121,8 @@ class WolvesScene:
         herd_dist = math.hypot(mx - center[0], mz - center[1])
         inputs = [dict(t=t, mother_stamina=self._mother_stamina(t),
                        herd_dist=herd_dist,
-                       assault=300.0 <= t < 480.0,
-                       mother_falling=480.0 <= t < 700.0,
+                       assault=phases.assault(t),
+                       mother_falling=phases.mother_falling(t),
                        bite_window=t >= 12.0)
                   for _ in range(wolves.WOLF_COUNT)]
         bbs = self._wolf_rig.tick(inputs)
@@ -130,18 +132,20 @@ class WolvesScene:
             jitter=lambda i: i % 5 == 0)
     def _mother_xy(self, t):
         """妈妈：守夜(营地) -> 引狼(向河北去) -> 留在树下。"""
-        if t < 480.0:
+        ph = phases.phase_at(t)
+        if ph in ('circle', 'charge'):
             return (TREE_AT[0] + 2.5, TREE_AT[1] - 7.0)
-        if t < 700.0:
+        if ph == 'chase':
             u = base.smooth((t - 480.0) / 220.0)
             return (TREE_AT[0] + 2.5 + 26.0 * u, TREE_AT[1] - 7.0 + 6.0 * u)
         # 牺牲后：回到树下（卧）
         return (TREE_AT[0] + 2.0, TREE_AT[1] - 4.0)
 
     def _mother_mode(self, t):
-        if t < 480.0:
+        ph = phases.phase_at(t)
+        if ph in ('circle', 'charge'):
             return 'stand'
-        if t < 700.0:
+        if ph == 'chase':
             return 'run'
         return 'lie'
 

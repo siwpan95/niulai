@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 
 import pyglet
 from pyglet.gl import (GL_DEPTH_TEST, GL_RGBA, GL_TRIANGLES,
@@ -21,6 +22,7 @@ from pyglet.gl import (GL_DEPTH_TEST, GL_RGBA, GL_TRIANGLES,
 from pyglet.graphics.shader import Shader, ShaderProgram
 from pyglet.math import Mat4
 
+from world3d.engine.perf import FrameStats
 from world3d.logic.camera import look_at_matrix
 from world3d.platform.app import capture
 
@@ -506,8 +508,11 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
     t0 = getattr(scene, 'T0', 0.0)      # 全片帧号 -> 幕内时间
     atm_fn = getattr(scene, 'atmosphere', None)
     crowd_fn = getattr(scene, 'crowd', None)
+    # 帧时间统计（world3d perf）：cpu 侧逐帧耗时，块日志里可查 jank/p1
+    stats = FrameStats(window=1200)
     try:
         for frame in range(start, end):
+            _t_frame = time.perf_counter()
             t = frame / float(fps) - t0
             eye, target = scene.camera(t)
             meshes = scene.meshes(t)
@@ -520,6 +525,7 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
                                            instanced, particles, water,
                                            scene=scene)
             manifest[frame] = hashlib.md5(raw).hexdigest()
+            stats.add((time.perf_counter() - _t_frame) * 1000.0)
             try:
                 proc.stdin.write(raw)
             except BrokenPipeError:
@@ -536,6 +542,7 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
         raise RuntimeError(f'ffmpeg failed:\n{err[-2000:]}')
     if not os.path.isfile(out_path) or os.path.getsize(out_path) == 0:
         raise RuntimeError(f'ffmpeg produced no output: {out_path}')
+    print(f'[render] perf {stats.text()}', flush=True)
     return manifest
 
 

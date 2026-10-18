@@ -3,6 +3,42 @@
 本项目所有值得注意的变更都会记录在此文件中。
 格式基于 Keep a Changelog，版本号遵循语义化版本。
 
+## [0.7.0] - 2026-10-18
+
+### Added（P6 · 剩余能力收尾，world3d 覆盖 57% → 76%）
+
+原则：**画面中立且语义等价的才真接入**；其余做 proof 对拍并逐条记账。
+每条真接入都用「同帧 md5 对比」证明画面未变。
+
+真接入（real）：
+
+- **fsm 时间轴**（`brains/phases.py`）：act4 四阶段 circle/charge/chase/grief
+  由 `world3d.engine.fsm.machine_from_keys` 编译，替换 4 处散落的时间阈值
+  （体力曲线 / 行为树输入 / 妈妈走位 / 步态）。t=0..1320 全扫与旧阈值 **0 失配**。
+- **serialize + scene_build**（`pipeline/scene_manifest.py` +
+  `scripts/export_manifests.py`）：八幕场景结构/相机关键帧/网格清单 ->
+  `output/manifests/<act>.scene.json`，`validate()` 实构建校验 **0 error**，
+  serialize 往返一致。
+- **perf**（`pipeline/render.py`）：`FrameStats` 逐帧计时，块日志输出
+  fps/median/p1/worst/jank。
+- **frustum**（`pipeline/pbr_frame.py`）：群体实例视锥剔除（保守球半径 4.5）。
+
+proof（`tests/test_p6_proofs.py`，不进成片）：
+
+- **skin**：两骨骼链 `joint_matrices` 与手算一致、顶点刚体变换正确；
+- **gpu_cull**：`cpu_reference` 与手算一致、`cpu_lod` 阈值正确、
+  compute 能力探测（本机 GL 4.6 / NVIDIA 617.42 可用）；
+- **greedy_mesh**：4×8 实心块贪心合并 quad 数 ≤ 逐格且 ≤ 10；
+- **orchestration**：`when→then` 级联顺序确定、可重放、环声明抛 RecursionError。
+
+### Notes（如实记账，不吹）
+
+- **frustum 剔除实测为 0 实例**：本片群体戏始终在景内，属"接入但零收益"；
+  6 帧开关 A/B md5 全同（画面中立成立）。
+- 仍不接入 10 项（soft_shadow/baked_mesh/hud/picking/fixedstep/adaptive_music/
+  audio/app/shot/timeline），逐条理由见 `docs/引擎能力审计_2026-10-18.md` §五。
+- 成片无需重渲：本轮真接入全部经同帧 md5 验证画面未变。
+
 ## [0.6.0] - 2026-10-18
 
 ### Added（P5 · 双引擎能力全量拉满 —— 全哥拍板「P5 必须全做」）

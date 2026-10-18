@@ -313,9 +313,21 @@ class PbrFramePipeline:
             pm = pack.static_or_dynamic(md)
             items.append((pm, self._pos_vlist(md, static=pm in
                                               pack.static_meshes())))
+        # 视锥剔除（world3d frustum）：群体戏里画外的牛/狼直接不进实例缓冲。
+        # 保守球半径 4.5（成年牛体长 ~2.6，留足余量）；NIULAI_NO_CULL=1 可关。
+        frustum = None
+        if not os.environ.get('NIULAI_NO_CULL'):
+            from world3d.engine.frustum import Frustum
+            frustum = Frustum.from_view_projection(self._vp())
         for pose_meshes, bases in (crowd or []):
             # 材质键由 merged_crowd_geometry 从 pose_meshes[0].name 自带
             merged = pack.merged_crowd_geometry(pose_meshes)
+            if frustum is not None:
+                bases = [b for b in bases
+                         if frustum.intersects_sphere((b[12], b[13], b[14]),
+                                                      4.5)]
+                if not bases:
+                    continue
             im = pack.crowd_instanced(merged, bases)
             items.append((im, self._pos_vlist(merged, static=False)))
         return items
