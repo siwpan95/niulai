@@ -153,6 +153,7 @@ scripts/         工程脚本
   assemble_final.py 八幕合片 + 全长 OST 混音
   voice_mix.py     六幕对白 + OST 混音 + 重封装
   contact_sheet.py 38 镜头联络图（单文件 HTML）
+  render_parallel.py 分块并行渲染（P3-2：切块 + N 进程并发 + --resume + concat）
   bench_render.py  渲染吞吐基准
 docs/             分幕脚本 / 借鉴记账 / TTS 试水报告 / 增强规划
 ```
@@ -160,8 +161,10 @@ docs/             分幕脚本 / 借鉴记账 / TTS 试水报告 / 增强规划
 ## 已知限制（如实列）
 
 - 群体戏渲染 ~5-7 fps@720p（36 头牛 × 13 盒体段的 CPU 合并不便宜）。
-  P3 已交付 GPU 实例化（act2/4/7 群体一次 draw call，2.0× 吞吐），但**块仍串行**——
-  全片 154,800 帧单进程约 5-9 小时；并行化见 `docs/增强规划_P3.md` P3-2
+  P3 已交付 GPU 实例化（act2/4/7 群体一次 draw call，2.0× 吞吐）与
+  **分块并行渲染**（`scripts/render_parallel.py`，默认 2 分钟一块、N 进程并发，
+  实测 2 workers 1.66×；块失败只损失 2 分钟，`--resume` 续跑）。
+  单进程跑满 154,800 帧仍需小时级——并行度受 CPU 核数与显存约束
 - SAPI 只有一个中文语音（Huihui），多角色同嗓——**默认设定**，保留。
   多角色配音已作为 opt-in 引擎交付：`python -m niulai.audio.tts --engine edge`
   或 `scripts/voice_mix.py --engine edge`（角色各一嗓、act5-6 自动切成年嗓、

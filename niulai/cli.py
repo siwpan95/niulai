@@ -60,7 +60,10 @@ def _cmd_render(args):
     if args.png:
         manifest = pipe.render_range(scene, args.start, args.end, args.out,
                                      size=(w, h), fps=FPS, on_progress=progress)
-        man_path = os.path.join(args.out, 'manifest.json')
+        # 尊重 --manifest：raw pipe 分支一直遵守，PNG 分支此前硬写进 --out，
+        # 导致外部（scripts/render_parallel.py 的分块清单）找不到清单。
+        # 不传时行为完全不变。
+        man_path = args.manifest or os.path.join(args.out, 'manifest.json')
         pipe.write_manifest(manifest, man_path,
                             meta={'act': args.act, 'seed': args.seed, 'fps': FPS,
                                   'size': [w, h], 'start': args.start,
