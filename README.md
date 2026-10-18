@@ -169,7 +169,11 @@ docs/             分幕脚本 / 借鉴记账 / TTS 试水报告 / 增强规划
   多角色配音已作为 opt-in 引擎交付：`python -m niulai.audio.tts --engine edge`
   或 `scripts/voice_mix.py --engine edge`（角色各一嗓、act5-6 自动切成年嗓、
   超窗按语速重合成；单句失败自动回退 sapi）。需联网 + ffmpeg
-- OST 为 180s 循环，长幕会有重复感（P3-3 做程序化变奏段）
+- OST 单条主题循环时，长幕（act4 18 分钟）会有重复感。
+  P3-3a 已交付程序化变奏：`python -m niulai.audio.variations --theme wolves
+  --seconds 1080 --out output/ost/suite_wolves.wav` —— 8 个变体（调式移位/倒影/
+  逆行/节奏加密稀疏/八度移位/配器增减/留白）按确定性顺序拼接铺满整幕，
+  纯函数 + 固定 seed，零新依赖零 GPU。生成式配乐（ACE-Step）留作可选 P3-3b
 - 绿地边缘仍有轻微圆形残留（噪声调制后改善，未根治）
 - **环境依赖**：ffmpeg 为拼装硬依赖，本机缺失时 `scripts/check_env.py` 会报 FAIL；
   无 NVIDIA 独显的机器上，GPU 系方案（神经 TTS / 生成式配乐 / 超分）均不可跑，
