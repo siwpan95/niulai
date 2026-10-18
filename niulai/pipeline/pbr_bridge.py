@@ -190,10 +190,12 @@ class PbrPack:
     一次/块，proctex 纹理走全局缓存跨块复用）。
     """
 
-    def __init__(self, act, w3renderer):
+    def __init__(self, act, w3renderer, pbr_program=None):
         self.act = act                      # 'act0' .. 'act7'
         self.renderer = w3renderer
+        self.pbr_program = pbr_program      # 阴影化 PBR 变体（帧图管线注入）
         env_kw = dict(ACT_ENVS.get(act, ACT_ENVS['act2']))
+        self.sun_dir = tuple(env_kw.get('sun_dir', (0.5, 0.8, 0.3)))
         self.env = LightEnvironment(**env_kw)
         self.env.bake()
         w3renderer.environment = self.env
@@ -201,14 +203,26 @@ class PbrPack:
         self._static = {}                   # id(md) -> world3d Mesh（缓存）
         self._frame_meshes = []             # 本帧动态（渲染后 delete）
 
+    def static_meshes(self):
+        """静态网格 id 集合（帧图管线判定 pos-vlist 是否可复用）。"""
+        return set(self._static.keys())
+
+    def static_or_dynamic(self, md):
+        """md -> world3d Mesh（静态缓存 / 动态新建并登记帧末回收）。"""
+        kind = (md.name or '').split(':')[0]
+        if id(md) in self._static or kind in ('desert', 'river',
+                                              'crooked_tree'):
+            return self._static_mesh(md)
+        return self._dyn_mesh(md)
+
     # ---------------------------------------------------------- 静态 --
     def _static_mesh(self, md):
         m = self._static.get(id(md))
         if m is None:
             kind = (md.name or '').split(':')[0]
             _pbr_prepare(md, kind)
-            m = Mesh(md, self.renderer.program('pbr'), mat_for(kind),
-                     name=md.name or kind)
+            m = Mesh(md, self.pbr_program or self.renderer.program('pbr'),
+                     mat_for(kind), name=md.name or kind)
             self._static[id(md)] = m
         return m
 
@@ -220,8 +234,8 @@ class PbrPack:
     def _dyn_mesh(self, md):
         kind = (md.name or '').split(':')[0]
         _pbr_prepare(md, kind)
-        m = Mesh(md, self.renderer.program('pbr'), mat_for(kind),
-                 name=md.name or kind)
+        m = Mesh(md, self.pbr_program or self.renderer.program('pbr'),
+                 mat_for(kind), name=md.name or kind)
         self._frame_meshes.append(m)
         return m
 
@@ -229,21 +243,10 @@ class PbrPack:
         """(meshes 平铺列表, crowd 组列表) -> world3d Scene（含透明排序数据）。"""
         sc = Scene(name=f'niulai:{self.act}')
         for md in meshes:
-            kind = (md.name or '').split(':')[0]
-            if id(md) in self._static or kind in ('desert', 'river',
-                                                  'crooked_tree'):
-                sc.add_mesh(self._static_mesh(md))
-            else:
-                sc.add_mesh(self._dyn_mesh(md))
+            sc.add_mesh(self.static_or_dynamic(md))
         for pose_meshes, bases in (crowd or []):
-            kind = (pose_meshes[0].name or 'cow').split(':')[0]
-            merged = self._merge(pose_meshes, kind)
-            im = InstancedMesh(merged, self.renderer.program('pbr_inst'),
-                               mat_for(kind), capacity=max(1, len(bases)))
-            im.write_all([tuple(b) for b in bases])
-            im.count = len(bases)
-            self._frame_meshes.append(im)
-            sc.add_mesh(im)
+            merged = self.merged_crowd_geometry(pose_meshes)
+            sc.add_mesh(self.crowd_instanced(merged, bases))
         return sc
 
     @staticmethod
@@ -259,6 +262,21 @@ class PbrPack:
         merged = MeshData(pos, normals=nor, uvs=uv, tangents=tan,
                           name=f'{kind}:instanced')
         return merged
+
+    def merged_crowd_geometry(self, pose_meshes):
+        """群体戏共享几何（公开口，帧图管线用）。"""
+        kind = (pose_meshes[0].name or 'cow').split(':')[0]
+        return self._merge(pose_meshes, kind)
+
+    def crowd_instanced(self, merged_md, bases):
+        """群体戏实例化网格（world3d InstancedMesh/pbr_inst，帧末回收）。"""
+        kind = (merged_md.name or 'cow').split(':')[0]
+        im = InstancedMesh(merged_md, self.renderer.program('pbr_inst'),
+                           mat_for(kind), capacity=max(1, len(bases)))
+        im.write_all([tuple(b) for b in bases])
+        im.count = len(bases)
+        self._frame_meshes.append(im)
+        return im
 
     def cleanup_frame(self):
         """本帧动态 GL 资源回收（长幕显存安全）。"""

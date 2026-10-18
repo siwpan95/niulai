@@ -134,9 +134,10 @@ class OffscreenRenderer:
             self._build_pbr()
 
     def _build_pbr(self):
-        """P5 全量 PBR：world3d Renderer（MRT + 天空 + SSAO + Bloom + 合成）。"""
+        """P5 全量 PBR：world3d Renderer + 帧图驱动深度效果链。"""
         from world3d.engine.postfx import PostSettings
         from world3d.engine.renderer import Renderer
+        from .pbr_frame import PbrFramePipeline
         # 曝光/泛光调校：程序化天空 + IBL 下默认参数会把画面推白（实测），
         # 压曝光 + 抬 Bloom 阈值保住沙丘纹理的对比。
         settings = PostSettings()
@@ -144,8 +145,12 @@ class OffscreenRenderer:
         settings.bloom_threshold = 1.9
         settings.bloom_intensity = 0.25
         settings.vignette = 0.30
+        if os.environ.get('NIULAI_PBR_NOSSAO'):
+            settings.ssao_enabled = False
         self._w3renderer = Renderer(self.width, self.height,
                                     post_settings=settings)
+        self._pbr_pipeline = PbrFramePipeline(self.width, self.height,
+                                              self._w3renderer, self.window)
 
     def _build_enhanced(self):
         from world3d.engine.oit import WBOIT, supported
@@ -272,7 +277,7 @@ class OffscreenRenderer:
         return pack
 
     def _render_pbr(self, scene, meshes, eye, target, overlays, instanced):
-        """P5 全量 PBR：world3d Renderer 端到端（MRT/天空/SSAO/Bloom/合成）。
+        """P5 全量 PBR：帧图驱动（CSM 阴影/体积雾/DOF/运动模糊/SSAO/Bloom）。
 
         粒子层不进本路径（allin fx 已在 raw/enhanced 验证；PBR 深度图
         与自定义点精灵的深度合成不在本档目标内）。
@@ -281,9 +286,8 @@ class OffscreenRenderer:
         win = self.window
         win.switch_to()
         pack = self._pbr_pack_for(scene)
-        w3scene = pack.build_frame(meshes, instanced)
-        cam = pack.camera(eye, target)
-        self._w3renderer.render(cam, w3scene, window=win)
+        self._pbr_pipeline.pack = pack
+        self._pbr_pipeline.render_frame(eye, target, meshes, instanced)
         pack.cleanup_frame()
         glEnable(GL_DEPTH_TEST)
         if overlays:
