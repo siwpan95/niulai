@@ -111,6 +111,22 @@ P1 四幕 lanczos 升采 1080p；act5-7 原生 1080p；七处过缝帧帧唯一
 两项"可选增强"默认关闭、不静默替换既有设定：多角色配音（`--engine edge`）、
 生成式配乐（P3-3b，需 GPU）。
 
+## P4 状态（已交付 · 2026-10-18）
+
+面向"内容密度 + 双引擎全量发挥"的一轮增强，详见 `docs/增强规划_P4.md`。
+
+| 项 | 交付 | 实测 |
+|----|------|------|
+| **内容填充** | 台词 36→46 句（序幕入梦问答新增、妈妈嘱托补全原文等，来源记账 `docs/原片素材调研.md`）+ 各幕节拍表 | 9 源交叉核定；二创梗甄别排除 |
+| **allin 行为树** | `brains/btree.py`：狼群五态势（妈妈体力/总攻窗等世界状态驱动）+ 牛群蛇逼惊呆 | stance 纯函数；替换硬编时间阈值 |
+| **allin 粒子** | `fx/particles.py`：act2 风沙带×3 + 跃溪飞沫 + act4 夜尘 | 种子注入确定性；回退重模拟一致 |
+| **allin 寻路** | `brains/navigation.py`：迁徙陆地段 A*（allin grid_astar） | 全程干地；与手搓入水段衔接 <2u |
+| **world3d enhanced** | `--profile enhanced`：WBOIT 透明水面（act2）+ Bloom 后处理（默认关闭） | 跨进程逐帧一致；与 raw 逐帧不同 |
+| **本机重制** | `scripts/render_all.py`（八幕 6 并发 + resume）+ `make_audio.py` + `assemble_film.py` | 11/11 测试模块全绿 |
+
+`ai.narrative`/`ai.dialogue` 评估后不接入（线性复刻片无分支需求）；
+CSM 阴影/体积光列为 P5 候选。配音版新增 act0（云玎开口，音色 Xiaoyi）。
+
 ## 快速开始
 
 ### 0) 环境自举（新机器先跑这一步）

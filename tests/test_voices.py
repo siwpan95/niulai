@@ -15,9 +15,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from niulai.acts import (act1_stand, act2_migration, act3_leopard,  # noqa: E402
-                         act4_wolves, act5_finale, act6_wake,
-                         act7_credits)
+from niulai.acts import (act0_prologue, act1_stand, act2_migration,  # noqa: E402
+                         act3_leopard, act4_wolves, act5_finale,
+                         act6_wake, act7_credits)
 from niulai.audio import tts  # noqa: E402
 
 FAILED = []
@@ -33,11 +33,12 @@ def check(name, cond, detail=''):
 def all_lines(include_credits=False):
     """全片台词 (幕名, t0, t1, speaker, text)，单一事实来源就是各幕的 LINES。
 
+    act0 序幕自 2026-10-18 内容扩充后也有入梦问答（4 句，云玎开口）；
     act7 是**片尾字幕卡**：speaker 全空、只上字幕不配音——`scripts/voice_mix.py`
-    的 ACTS 也只含 act1-act6。故默认排除，避免"字幕卡也被念出来"。
+    的 ACTS 也只含 act0-act6。故默认排除，避免"字幕卡也被念出来"。
     """
-    mods = [act1_stand, act2_migration, act3_leopard, act4_wolves,
-            act5_finale, act6_wake, act7_credits]
+    mods = [act0_prologue, act1_stand, act2_migration, act3_leopard,
+            act4_wolves, act5_finale, act6_wake, act7_credits]
     out = []
     for m in mods:
         name = m.__name__.split('.')[-1]

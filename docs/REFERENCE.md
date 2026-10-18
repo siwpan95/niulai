@@ -7,8 +7,14 @@
 
 | 组件 | 版本 | 许可证 | 用途 |
 |------|------|--------|------|
-| 3dworld（导入名 world3d） | >=0.1.0 | MIT（siwpan 自研，gitee.com/siwpan/3dworld） | 渲染/演出层：`engine.geometry`（MeshData/box）、`logic.camera`（look_at_matrix）、`platform.app`（capture 抓帧） |
-| allin-engine（导入名 allin_engine） | >=1.0.0 | MIT（siwpan 自研，gitee.com/siwpan/an-engine） | 逻辑/智能层：`core.event_bus`（EventBus，P0 桥接层）；P1 起接入 ECS / ai.decision / systems.combat / world / audio |
+| 3dworld（导入名 world3d） | >=0.1.0 | MIT（siwpan 自研，gitee.com/siwpan/3dworld） | 渲染/演出层：`engine.geometry`（MeshData/box）、`logic.camera`（look_at_matrix）、`platform.app`（capture 抓帧）；P4 起接入 `engine.oit`（WBOIT 透明）/ `engine.postfx`（Bloom 后处理）/ `engine.shaders`（wboit 着色器）/ `engine.targets`（RenderTarget） |
+| allin-engine（导入名 allin_engine） | >=1.0.0 | MIT（siwpan 自研，gitee.com/siwpan/an-engine） | 逻辑/智能层：`core.event_bus`（EventBus，P0 桥接层）；P1 起接入 ECS / systems.combat / world / audio；P4 起接入 `ai.decision.behavior_tree`（狼群/牛群行为树）、`fx.particle_np`（沙尘/飞沫/夜尘粒子场）、`world.pathfinding`（迁徙 A* 领队路径） |
+| imageio-ffmpeg | >=0.6.0 | BSD-2-Clause | 自带静态 ffmpeg 二进制（win-x86_64 v7.1 essentials，含 libx264/aac）——无系统 ffmpeg 时的硬依赖来源；`imageio_ffmpeg.get_ffmpeg_exe()` 的路径注入 `NIULAI_FFMPEG` 即可 |
+
+> imageio-ffmpeg 记账说明（2026-10-18）：本机 winget 拉 gyan.dev 失败
+> （GitHub 下载被网络挡），PyPI 通路可用，改以 imageio-ffmpeg 的 wheel 内置
+> 二进制充当 ffmpeg。它与 gyann build 同源（`7.1-essentials_build-www.gyan.dev`）。
+> `scripts/bootstrap.py` 找不到 ffmpeg 时可按此路径补装。
 
 ## 二、手法/算法借鉴（代码未整体复制，重写于 niulai/，注明来源）
 
@@ -29,4 +35,6 @@
 ## 四、原片素材
 
 《牛来》正片/台词为原片著作权内容。本工程仅依据公开剧情梗概、台词摘录与影评
-做**同人学习性复刻**：不商用、不传播成片、不冒名。台词库仅存于本地 docs/，不入仓。
+做**同人学习性复刻**：不商用、不传播成片、不冒名。台词以**片段引用**方式
+进入复刻工程的字幕/配音轨（`niulai/acts/*::LINES`），来源与采用/未采用裁定
+台账见 `docs/原片素材调研.md`（S1 维基语录为台词单一事实来源）。

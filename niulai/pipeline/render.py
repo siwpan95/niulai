@@ -25,6 +25,7 @@ from world3d.logic.camera import look_at_matrix
 from world3d.platform.app import capture
 
 from ..cast.rig import merge_draw
+from .profile import get_profile
 
 VERTEX_SRC = '''#version 330 core
 in vec3 position;
@@ -51,6 +52,23 @@ void main() {
     float fog = 1.0 - exp(-d * u_fog_k);
     vec3 lit = v_col.rgb * u_tint;
     final_colors = vec4(mix(lit, u_fog, clamp(fog, 0.0, 1.0)), 1.0);
+}'''
+
+# enhanced profile 无后处理时的直通呈现（属性布局同 world3d SKY_VERT）
+COPY_VERT_SRC = '''#version 330 core
+in vec3 position;
+out vec2 vNdc;
+void main() {
+    vNdc = position.xy;
+    gl_Position = vec4(position, 1.0);
+}'''
+
+COPY_FRAG_SRC = '''#version 330 core
+in vec2 vNdc;
+uniform sampler2D uTex;
+out vec4 final_colors;
+void main() {
+    final_colors = texture(uTex, vNdc * 0.5 + 0.5);
 }'''
 
 
@@ -82,14 +100,19 @@ def read_pixels(window):
 
 
 class OffscreenRenderer:
-    """离屏渲染器：一个窗口复用整个帧区间。"""
+    """离屏渲染器：一个窗口复用整个帧区间。
+
+    profile：'raw'（默认）/ 'enhanced'（WBOIT 水面 + Bloom，见 pipeline/profile.py）。
+    enhanced 资源（rt_a/rt_b/oit/post）惰性建，尺寸随窗口。
+    """
 
     def __init__(self, width=1280, height=720, sky=(0.9, 0.85, 0.74), fov=55.0,
-                 fog_k=0.0105, tint=(1.0, 1.0, 1.0)):
+                 fog_k=0.0105, tint=(1.0, 1.0, 1.0), profile=None):
         self.width, self.height = width, height
         self.sky = sky
         self.fog_k = fog_k
         self.tint = tint
+        self.profile = profile or get_profile('raw')
         self._batch_cache = {}          # vertex_count -> InstancedBatch
         self.window = pyglet.window.Window(width, height, visible=False)
         self.window.switch_to()
@@ -98,9 +121,136 @@ class OffscreenRenderer:
         self.window.projection = Mat4.perspective_projection(
             width / float(height), z_near=0.1, z_far=600.0, fov=fov)
         glEnable(GL_DEPTH_TEST)
-        glClearColor(sky[0], sky[1], sky[2], 1.0)
+        glClearColor(sky[0], sky[1], sky[2], 1.0)   # 清屏色 == 雾色（铁律）
+        # enhanced 资源
+        self._rt_a = self._rt_b = None
+        self._oit = None
+        self._post = None
+        self._copy_prog = None
+        if self.profile.name == 'enhanced':
+            self._build_enhanced()
+
+    def _build_enhanced(self):
+        from world3d.engine.oit import WBOIT, supported
+        from world3d.engine.postfx import PostChain
+        from world3d.engine.targets import RenderTarget
+        self._rt_a = RenderTarget(self.width, self.height, color_count=1,
+                                  depth=True)
+        self._rt_b = RenderTarget(self.width, self.height, color_count=1,
+                                  depth=False)
+        if self.profile.wboit and supported():
+            self._oit = WBOIT(self.width, self.height)
+        if self.profile.bloom:
+            self._post = PostChain(self.width, self.height)
+        self._copy_prog = ShaderProgram(Shader(COPY_VERT_SRC, 'vertex'),
+                                        Shader(COPY_FRAG_SRC, 'fragment'))
+
+    # ------------------------------------------------------ enhanced 路径 --
+    def _draw_water_wboit(self, positions, color, alpha):
+        """水面 WBOIT 透明绘制（world3d 'wboit' 着色器：accum/reveal 双 MRT）。
+
+        positions: 水面三角形位置列表；color: RGB 0-1；alpha: 不透明度。
+        法线恒为 +Y（水面平坦），model/normal_mat 为单位矩阵。
+        """
+        from world3d.engine.shaders import get
+        prog = get('wboit')
+        prog.use()
+        ident = (1.0, 0.0, 0.0, 0.0,
+                 0.0, 1.0, 0.0, 0.0,
+                 0.0, 0.0, 1.0, 0.0,
+                 0.0, 0.0, 0.0, 1.0)
+        prog['model'] = ident
+        prog['normal_mat'] = ident
+        prog['uColor'] = tuple(color)
+        prog['uAlpha'] = float(alpha)
+        prog['uLightDir'] = (0.35, 0.85, 0.40)
+        n = len(positions) // 3
+        norms = [0.0, 1.0, 0.0] * n
+        vlist = prog.vertex_list(n, GL_TRIANGLES,
+                                 position=('f', list(positions)),
+                                 normals=('f', norms))
+        vlist.draw(GL_TRIANGLES)
+        vlist.delete()
+
+    def _render_enhanced(self, meshes, eye, target, overlays, instanced,
+                         particles, water):
+        """enhanced profile：场景 -> rt_a；水面 WBOIT；Bloom -> 帧缓冲。"""
+        from pyglet.gl import (GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
+                               GL_NEAREST, GL_READ_FRAMEBUFFER,
+                               glBindFramebuffer, glBlitFramebuffer, glClear,
+                               glClearColor)
+        win = self.window
+        win.switch_to()
+        win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
+        prog = self.program
+        # 1) 不透明场景（+ 实例化 + 粒子）-> rt_a
+        self._rt_a.bind()
+        prog.use()
+        self._apply_uniforms(eye)
+        glClearColor(self.sky[0], self.sky[1], self.sky[2], 1.0)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        vlist = merge_draw(prog, meshes)
+        vlist.draw(GL_TRIANGLES)
+        vlist.delete()
+        if instanced:
+            from . import instanced as _inst
+            for pose_meshes, bases in instanced:
+                total = sum(len(md.positions) // 3 for md in pose_meshes)
+                batch = self._batch_cache.get(total)
+                if batch is None:
+                    batch = _inst.InstancedBatch(total)
+                    self._batch_cache[total] = batch
+                batch.draw(pose_meshes, bases, eye, self.sky, self.fog_k,
+                           self.tint)
+        if particles:
+            for layer in particles:
+                layer.draw(win, eye, self.sky, self.fog_k, self.tint)
+        src_rt = self._rt_a
+        # 2) 水面 WBOIT（深度从 rt_a blit -> 岸/角色正确遮挡水面）
+        if water and self._oit is not None:
+            self._oit.begin()
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, self._rt_a.fbo.id)
+            glBlitFramebuffer(0, 0, self.width, self.height,
+                              0, 0, self.width, self.height,
+                              GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+            for positions, color, alpha in water:
+                self._draw_water_wboit(positions, color, alpha)
+            self._oit.end()
+            # 3) 合成 -> rt_b
+            self._rt_b.bind()
+            self._oit.composite(self._rt_a.color[0])
+            src_rt = self._rt_b
+        # 4) Bloom / 呈现 -> 窗口帧缓冲
+        src_rt.unbind()
+        if self._post is not None:
+            bloom_tex = self._post.render_bloom(src_rt.color[0])
+            self._post.composite(src_rt.color[0], self.width, self.height,
+                                 bloom_tex=bloom_tex)
+        else:
+            self._present_copy(src_rt.color[0])
+        # 5) 字幕 overlay（屏幕空间）-> 帧缓冲
+        if overlays:
+            for ov in overlays:
+                ov.draw(win)
+        return read_pixels(win)
+
+    def _present_copy(self, tex):
+        """无后处理时的直通呈现（复制着色器 + FullscreenQuad）。"""
+        from world3d.engine.postfx import FullscreenQuad
+        from world3d.engine.targets import bind_texture
+        prog = self._copy_prog
+        prog.use()
+        bind_texture(0, tex)
+        prog['uTex'] = 0
+        FullscreenQuad().draw(prog)
 
     def close(self):
+        for obj in (self._rt_a, self._rt_b, self._oit, self._post):
+            try:
+                if obj is not None:
+                    obj.delete()
+            except Exception:
+                pass
         self.window.close()
 
     def _apply_uniforms(self, eye):
@@ -117,10 +267,16 @@ class OffscreenRenderer:
         self.tint = tuple(tint)
         glClearColor(sky[0], sky[1], sky[2], 1.0)
 
-    def render_frame(self, meshes, eye, target, path, atmosphere=None):
+    def render_frame(self, meshes, eye, target, path, atmosphere=None,
+                     overlays=None, particles=None, water=None):
         """画一帧并存 PNG，返回该文件的 md5。"""
         if atmosphere is not None:
             self.apply_atmosphere(*atmosphere)
+        if self.profile.name == 'enhanced' and self._rt_a is not None:
+            self._render_enhanced(meshes, eye, target, overlays, None,
+                                  particles, water)
+            capture(self.window, path)
+            return md5_of(path)
         win = self.window
         win.switch_to()
         win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
@@ -131,21 +287,36 @@ class OffscreenRenderer:
         vlist = merge_draw(prog, meshes)
         vlist.draw(GL_TRIANGLES)
         vlist.delete()
+        if particles:
+            for layer in particles:
+                layer.draw(win, eye, self.sky, self.fog_k, self.tint)
+        if overlays:
+            for ov in overlays:
+                ov.draw(win)
         capture(win, path)
         return md5_of(path)
 
     def render_frame_raw(self, meshes, eye, target, overlays=None,
-                         atmosphere=None, instanced=None):
+                         atmosphere=None, instanced=None, particles=None,
+                         water=None):
         """画一帧并返回原始 RGBA 字节（供 raw pipe 直喂 ffmpeg）。
 
         overlays：可选的屏幕空间叠加层列表（字幕等），在 3D 之后、
         读回之前绘制（正交投影，见 SubtitleTrack.draw）；
         atmosphere：(sky, fog_k, tint) 逐帧大气（None = 用构造值）；
         instanced：[(pose_meshes, bases), ...] 群体戏实例化组
-        （与 CPU 合并路径输出逐字节一致，见 pipeline/instanced.py）。
+        （与 CPU 合并路径输出逐字节一致，见 pipeline/instanced.py）；
+        particles：[ParticleLayer, ...] 氛围粒子层（allin fx 接入，
+        世界空间点精灵，3D 之后、overlays 之前绘制；层内状态已由
+        场景的 particles(t) 预推进到本帧）；
+        water：[(positions, color, alpha), ...] WBOIT 透明面（仅 enhanced
+        profile 生效，由场景的 water(t) 钩子给出）。
         """
         if atmosphere is not None:
             self.apply_atmosphere(*atmosphere)
+        if self.profile.name == 'enhanced' and self._rt_a is not None:
+            return self._render_enhanced(meshes, eye, target, overlays,
+                                         instanced, particles, water)
         win = self.window
         win.switch_to()
         win.view = look_at_matrix(eye, target, (0.0, 1.0, 0.0))
@@ -167,6 +338,9 @@ class OffscreenRenderer:
                     self._batch_cache[total] = batch
                 batch.draw(pose_meshes, bases, eye, self.sky, self.fog_k,
                            self.tint)
+        if particles:
+            for layer in particles:
+                layer.draw(win, eye, self.sky, self.fog_k, self.tint)
         if overlays:
             for ov in overlays:
                 ov.draw(win)
@@ -178,21 +352,29 @@ def frame_path(out_dir, frame):
 
 
 def render_range(scene, start, end, out_dir, size=(1280, 720), fps=30,
-                 on_progress=None):
+                 on_progress=None, profile=None):
     """渲染帧区间 [start, end)（半开）。返回 {frame: md5} 清单。
 
     同一个 OffscreenRenderer 复用整个区间；每帧先算相机再取姿态。
     """
     os.makedirs(out_dir, exist_ok=True)
-    r = OffscreenRenderer(size[0], size[1], sky=scene.SKY)
+    r = OffscreenRenderer(size[0], size[1], sky=scene.SKY, profile=profile)
     manifest = {}
+    water_fn = getattr(scene, 'water', None)
+    particles_fn = getattr(scene, 'particles', None)
+    overlays_fn = getattr(scene, 'overlays', None)
     try:
         for frame in range(start, end):
             t = frame / float(fps)
             eye, target = scene.camera(t)
             meshes = scene.meshes(t)
+            particles = particles_fn(t) if particles_fn else None
+            water = water_fn(t) if water_fn else None
+            overlays = overlays_fn(t) if overlays_fn else None
             p = frame_path(out_dir, frame)
-            manifest[frame] = r.render_frame(meshes, eye, target, p)
+            manifest[frame] = r.render_frame(meshes, eye, target, p,
+                                             overlays=overlays,
+                                             particles=particles, water=water)
             if on_progress is not None:
                 on_progress(frame, end)
     finally:
@@ -209,12 +391,14 @@ def write_manifest(manifest, path, meta=None):
 
 
 def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
-                ffmpeg='ffmpeg', crf=20, on_progress=None, audio=None):
+                ffmpeg='ffmpeg', crf=20, on_progress=None, audio=None,
+                profile=None):
     """raw pipe 直喂 ffmpeg：帧缓冲原始字节走 stdin，**无中间 PNG**。
 
     P0 的 PNG 路径 ~1.5fps@720p（zlib 压缩 3.7MB/帧是瓶颈）；本路径把
     编码整个交给 ffmpeg 的 C 实现，实测数量级提升（见 bench）。
     可选 audio：音轨文件路径，ffmpeg -i 混入（-shortest）。
+    profile：渲染 profile（默认 raw；enhanced = WBOIT + Bloom）。
     返回 {frame: md5}（帧级 md5 用于确定性验收；内容 = 翻转后 RGBA 字节）。
     """
     w, h = size
@@ -247,9 +431,12 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
     drain.start()
     r = OffscreenRenderer(w, h, sky=scene.SKY,
                           fog_k=getattr(scene, 'FOG_K', 0.0105),
-                          tint=getattr(scene, 'TINT', (1.0, 1.0, 1.0)))
+                          tint=getattr(scene, 'TINT', (1.0, 1.0, 1.0)),
+                          profile=profile)
     manifest = {}
     overlays_fn = getattr(scene, 'overlays', None)
+    particles_fn = getattr(scene, 'particles', None)
+    water_fn = getattr(scene, 'water', None)
     t0 = getattr(scene, 'T0', 0.0)      # 全片帧号 -> 幕内时间
     atm_fn = getattr(scene, 'atmosphere', None)
     crowd_fn = getattr(scene, 'crowd', None)
@@ -259,10 +446,12 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
             eye, target = scene.camera(t)
             meshes = scene.meshes(t)
             overlays = overlays_fn(t) if overlays_fn else None
+            particles = particles_fn(t) if particles_fn else None
+            water = water_fn(t) if water_fn else None
             atm = atm_fn(t) if atm_fn else None
             instanced = crowd_fn(t) if crowd_fn else None
             _, _, raw = r.render_frame_raw(meshes, eye, target, overlays, atm,
-                                           instanced)
+                                           instanced, particles, water)
             manifest[frame] = hashlib.md5(raw).hexdigest()
             try:
                 proc.stdin.write(raw)

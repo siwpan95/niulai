@@ -23,8 +23,10 @@ from ..cast.calf import Calf
 from ..cast.quadruped import Quadruped
 from ..cast.snake import Snake
 from ..cast.specs import MOTHER_SPEC
-from ..brains import migration
+from ..brains import btree, migration
 from ..brains.world import CastWorld
+from ..fx import particles as fx_particles
+from ..fx.layer import ParticleLayer
 from ..scenery import desert
 from ..timeline import Timeline
 from . import base
@@ -52,8 +54,10 @@ LINES = (
     (250.0, 257.0, '牛妈妈', '我给你们摘果子，吃完了，就有力气了！'),
     (336.0, 343.0, '牛来', '妈妈，我怕……'),
     (350.0, 357.0, '牛妈妈', '别怕，水不深。'),
+    (428.0, 436.0, '牛来', '好吧妈妈，那就后天，我先跳过这条小溪，再去找大河。'),
     (440.0, 446.0, '牛妈妈', '跳过来，勇敢点！'),
     (448.0, 454.0, '牛来', '别急，我还是长大一点再跳吧。'),
+    (458.0, 466.0, '牛妈妈', '跳小河撞树上啦？那哭的不应该是树吗？'),
 )
 
 
@@ -86,8 +90,52 @@ class MigrationScene:
         self.cast.register('mother')
         self.cast.register('snake')
         self._sub = SubtitleOverlay(SubtitleTrack(LINES))
+        # 氛围粒子（allin fx）：沿走廊三个 z 平面的风沙带（发射点随牛群 x 漂移）
+        # + 渡口飞沫（跃溪窗 415-478s，跟牛来）。全部确定性（固定 seed + 固定步长）。
+        self._dust_layers = []
+        for k, zd in enumerate((6.0, 26.0, 46.0)):
+            f = fx_particles.dust_field(seed + 31 + k, z=zd,
+                                        follow=self._dust_origin, rate=70.0)
+            self._dust_layers.append(ParticleLayer(f, point_size=3.0))
+        self._splash = fx_particles.splash_field(seed + 77, z=48.5,
+                                                 follow=self._splash_origin)
+        self._splash_layer = ParticleLayer(self._splash, point_size=2.0)
         self.shots = self._build_shots()
         self.use_instancing = True     # 群体戏 GPU 实例化（等价性测试可关）
+
+    # ------------------------------------------------------------ 粒子锚点 --
+    def set_profile(self, profile):
+        """渲染 profile 协议：enhanced 时河面从 meshes 摘出、改走 WBOIT。"""
+        self._wboit = bool(getattr(profile, 'wboit', False))
+        return self
+
+    def water(self, t):
+        """WBOIT 透明面（仅 enhanced）：河面 (positions, color, alpha)。"""
+        if not getattr(self, '_wboit', False):
+            return []
+        return [(self.river_md.positions, desert.WATER_COLOR, 0.72)]
+
+    def _dust_origin(self, t):
+        """风沙带发射点：牛群领队当前 x（高度 1.2，贴地表扬尘）。"""
+        prog = _progress(t)
+        lx, _ = migration.migration_path(prog)
+        return (lx, 1.2)
+
+    def _splash_origin(self, t):
+        """飞沫发射点：跃溪窗内跟牛来（rate 140）；窗外 rate 0（无粒子）。"""
+        em = self._splash.emitter(0)
+        if 415.0 <= t < 478.0:
+            _, calf_xy, _, _ = self._formation(t)
+            em.rate = 140.0
+            return (calf_xy[0], 0.35)
+        em.rate = 0.0
+        return (0.0, 0.35)
+
+    def _snake_xy(self, t):
+        """蛇在场窗（330-500s）-> (x, z)；否则 None（牛群不受惊）。"""
+        if 330.0 <= t < 500.0:
+            return self.snake.path(t)
+        return None
 
     # ---------------------------------------------------------------- 编队 --
     def _formation(self, t):
@@ -109,6 +157,8 @@ class MigrationScene:
     def crowd(self, t):
         """群体戏实例化：牛群成员 1+（同规格同姿态，仅 base 不同）。
 
+        步态经行为树决策（brains/btree.cow_mode：蛇逼近 -> 惊呆立定），
+        同 mode 的成员共享一份 pose 实例化（按 mode 分组，各组一次 draw call）。
         返回 [(pose_meshes, bases)]；bases 为列主序 16 元组。
         关闭开关返回 None（等价性测试用 CPU 路径比对）。
         """
@@ -116,16 +166,26 @@ class MigrationScene:
             return None
         tq = Timeline.quantize(t, perf.ANIM_FPS)
         slots, _, _, _ = self._formation(t)
-        pose = self.herd[1].meshes_identity(tq, mode='walk', speed=0.8)
-        bases = []
+        snake_xy = self._snake_xy(t)
+        groups = {}
         for i in range(1, migration.HERD_SIZE):
             x, z, yaw = slots[i]
-            q = self.herd[i]
-            q.origin = Vec3(x, self.ground(x, z), z)
-            q.yaw = yaw
-            bases.append(tuple(q._base_matrix()))
-            self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw, mode='walk')
-        return [(pose, bases)]
+            mode = btree.cow_mode(t, snake_xy, (x, z))
+            groups.setdefault(mode, []).append(i)
+        out = []
+        for mode, idxs in sorted(groups.items()):
+            pose = self.herd[1].meshes_identity(tq, mode=mode, speed=0.8)
+            bases = []
+            for i in idxs:
+                x, z, yaw = slots[i]
+                q = self.herd[i]
+                q.origin = Vec3(x, self.ground(x, z), z)
+                q.yaw = yaw
+                bases.append(tuple(q._base_matrix()))
+                self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw,
+                                   mode=mode)
+            out.append((pose, bases))
+        return out
 
     # ---------------------------------------------------------------- 镜头 --
     def _build_shots(self):
@@ -189,39 +249,53 @@ class MigrationScene:
     def meshes(self, t):
         tq = Timeline.quantize(t, perf.ANIM_FPS)
         slots, calf_xy, mother_xy, prog = self._formation(t)
-        # 牛群：instancing 开时成员 1+ 由 crowd() 实例化绘制；领队（0 号）始终合并
+        snake_xy = self._snake_xy(t)
+        # 牛群：instancing 开时成员 1+ 由 crowd() 实例化绘制；领队（0 号）始终合并。
+        # 步态经行为树决策（蛇逼近惊呆立定），CPU 路径逐头按 mode 画。
         if not self.use_instancing:
             for i, q in enumerate(self.herd):
                 x, z, yaw = slots[i]
+                mode = 'walk' if i == 0 else btree.cow_mode(t, snake_xy,
+                                                            (x, z))
                 base.place_quad(q, x, z, yaw, self.ground)
-                self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw, mode='walk')
+                self.cast.set_pose(f'herd{i}', x, q.origin.y, z, yaw,
+                                   mode=mode)
         # 妈妈（领队）
         base.place_quad(self.mother, mother_xy[0], mother_xy[1],
                         slots[0][2], self.ground)
         # 牛来：迁徙中步行；渡口畏惧时站立不动；跃溪时小跑
-        if 415.0 <= t < 470.0:
-            calf_mode = 'run' if t > 442.0 else 'stand'
-        else:
-            calf_mode = 'walk'
+        # （步态由 calf 内部按 t 推导，此处无需外置 calf_mode）
         self.calf.origin = Vec3(calf_xy[0],
                                 self.ground(*calf_xy) + 0.61, calf_xy[1])
         # 蛇：330s 后在河岸游走
-        out = [self.terrain_md, self.river_md]
+        out = [self.terrain_md]
+        if not getattr(self, '_wboit', False):
+            out.append(self.river_md)      # raw：河面不透明（既定设定）
         if not self.use_instancing:
-            for q in self.herd:
-                out.extend(q.meshes(tq, mode='walk', speed=0.8))
+            for i, q in enumerate(self.herd):
+                mode = 'walk' if i == 0 else btree.cow_mode(
+                    t, snake_xy, (slots[i][0], slots[i][1]))
+                out.extend(q.meshes(tq, mode=mode, speed=0.8))
         else:
             out.extend(self.herd[0].meshes(tq, mode='walk', speed=0.8))
         out.extend(self.mother.meshes(tq, mode='walk', speed=0.8))
         out.extend(self.calf.meshes(tq))
-        if 330.0 <= t < 500.0:
+        if snake_xy is not None:
             out.extend(self.snake.meshes(tq))
-            sx, sz = self.snake.path(t)
+            sx, sz = snake_xy
             self.cast.set_pose('snake', sx, self.ground(sx, sz) + 0.1, sz)
         self.cast.set_pose('niulai', calf_xy[0], self.calf.origin.y, calf_xy[1])
         self.cast.set_pose('mother', mother_xy[0], self.mother.origin.y,
                            mother_xy[1], self.mother.yaw, mode='walk')
         return out
+
+    # ---------------------------------------------------------------- 粒子 --
+    def particles(self, t):
+        """氛围粒子层（allin fx）：风沙带 x3 + 渡口飞沫（窗内）。"""
+        for layer in self._dust_layers:
+            layer.update(t)
+        self._splash_layer.update(t)
+        return self._dust_layers + [self._splash_layer]
 
     def overlays(self, t):
         return [self._sub.at(t)]

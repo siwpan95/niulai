@@ -18,6 +18,7 @@ from ..cast.calf import Calf
 from ..cast.skylark import Skylark, flight_head
 from ..scenery import desert
 from ..timeline import Timeline
+from .subtitles import SubtitleOverlay, SubtitleTrack
 
 TAU = 6.283185307
 
@@ -30,6 +31,15 @@ CHASE_DIST, CHASE_UP, LOOKAHEAD = 13.0, 4.5, 8.0
 # 双人镜头参数（终态机位）
 DUAL_DIST, DUAL_UP = 9.0, 2.6
 BLEND_T0, BLEND_T1 = 330.0, 360.0   # 全幕：末 30 秒过渡到双人镜头
+
+# 入梦问答（原片 S2：牛来眼前一黑开始做梦，问云雀"我们不一样，是吗？"）
+# 台词来源：wikiquote / 头条整理，记账与编辑裁定见 docs/原片素材调研.md
+LINES = (
+    (328.0, 334.0, '牛来', '我们不一样，是吗？'),
+    (336.0, 342.0, '云玎', '是的——我们不一样，但我们也一样。'),
+    (344.0, 350.0, '牛来', '那我也能像你那样从树上下来吗？'),
+    (352.0, 360.0, '云玎', '那恐怕不行，那是飞，但是你会在地上跑起来的。'),
+)
 
 
 def _smooth(u):
@@ -54,6 +64,8 @@ class PrologueScene:
         self.calf_y = ground + CALF_BELLY_CLEAR
         self.calf = Calf(origin=(CALF_AT[0], self.calf_y, CALF_AT[1]), yaw=2.55)
         self.bird = Skylark()
+        # 字幕（入梦问答）
+        self._sub = SubtitleOverlay(SubtitleTrack(LINES))
 
     # ---------------------------------------------------------------- 地形 --
     def ground_at(self, wx, wz):
@@ -105,3 +117,7 @@ class PrologueScene:
         out.extend(self.bird.meshes(tq))
         out.extend(self.calf.meshes(tq))
         return out
+
+    # ---------------------------------------------------------------- 字幕 --
+    def overlays(self, t):
+        return [self._sub.at(t)]

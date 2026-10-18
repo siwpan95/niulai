@@ -25,6 +25,8 @@ from ..cast.quadruped import Quadruped
 from ..cast.specs import MOTHER_SPEC, WOLF_SPEC
 from ..brains.world import CastState, CastWorld
 from ..brains import wolves
+from ..fx import particles as fx_particles
+from ..fx.layer import ParticleLayer
 from ..scenery import desert, tree as tree_mod
 from ..timeline import Timeline
 from . import base
@@ -41,8 +43,8 @@ TREE_AT = (10.0, 64.0)      # 北岸干地（河床 z<=61 在水下，实测剖�
 CAMP = (10.0, 70.0)
 
 LINES = (
-    (500.0, 508.0, '牛妈妈', '相信我，我还会在你身后出现的。'),
-    (506.0, 513.0, '牛妈妈', '以后，如果你想妈妈了，就到这棵树下来吧。'),
+    (496.0, 504.0, '牛妈妈', '相信我，我还会在你身后出现的。'),
+    (506.0, 518.0, '牛妈妈', '以后，如果你想妈妈了，就到这棵树下来吧。这儿会有妈妈的影子，也许它，能唤起你的回忆和斗志。'),
     (740.0, 747.0, '牛来', '妈妈……'),
 )
 
@@ -76,12 +78,46 @@ class WolvesScene:
         for i in range(6):
             self.cast.register(f'herd{i}')
         self._sub = SubtitleOverlay(SubtitleTrack(LINES))
+        # 氛围粒子（allin fx）：夜风寒尘，锚在树下战区 z 平面
+        self._motes = fx_particles.mote_field(
+            seed + 13, z=TREE_AT[1] - 5.0,
+            follow=lambda t: (TREE_AT[0] + 2.0, 1.1))
+        self._mote_layer = ParticleLayer(self._motes, point_size=2.0)
         # 战斗节拍（固定种子，确定性）
         self.beats = wolves.build_battle_log()
         self.shots = self._build_shots()
         self.use_instancing = True     # 群体戏 GPU 实例化（等价性测试可关）
 
     # ---------------------------------------------------------------- 走位 --
+    def _mother_stamina(self, t):
+        """妈妈体力 1.0 -> 0.0（BT charge 条件的世界状态输入，纯函数）。
+
+        300s 总攻起随消耗下降；480s 引开狼群后急坠；700s 牺牲归零。
+        """
+        if t < 300.0:
+            return 1.0
+        if t < 480.0:
+            return 1.0 - (t - 300.0) / 180.0 * 0.45
+        if t < 700.0:
+            return 0.55 - (t - 480.0) / 220.0 * 0.55
+        return 0.0
+
+    def _wolf_pack(self, t):
+        """狼群态势（行为树决策，meshes/crowd 两路共用同一上下文）。
+
+        世界状态：妈妈体力曲线 / 总攻窗(300-480) / 牺牲段(480-700) /
+        狼群环心到妈妈的距离；jitter 每 5 只狼半径 +3u 出几何纵深。
+        """
+        mx, mz = self._mother_xy(t)
+        center = (TREE_AT[0], TREE_AT[1] - 1.0)
+        herd_dist = math.hypot(mx - center[0], mz - center[1])
+        return wolves.pack_positions(
+            t, center=center,
+            mother_stamina=self._mother_stamina(t),
+            herd_dist=herd_dist,
+            assault=300.0 <= t < 480.0,
+            mother_falling=480.0 <= t < 700.0,
+            jitter=lambda i: i % 5 == 0)
     def _mother_xy(self, t):
         """妈妈：守夜(营地) -> 引狼(向河北去) -> 留在树下。"""
         if t < 480.0:
@@ -170,7 +206,9 @@ class WolvesScene:
         self.calf.origin = Vec3(nx, self.ground(nx, nz) + 0.61, nz)
         self.calf.yaw = math.atan2(TREE_AT[1] - nz, TREE_AT[0] - nx)
         # 狼群（300s 后进入；总攻后随妈妈引开方向远去）
-        pack = wolves.pack_positions(t, center=(TREE_AT[0], TREE_AT[1] - 1.0))
+        # 态势经行为树决策（brains/btree）：世界状态（妈妈体力/总攻窗）驱动
+        # circle -> stalk -> charge -> bite -> chase，不再硬编时间阈值。
+        pack = self._wolf_pack(t)
         if 480.0 <= t < 700.0:
             # 被引开的狼群追妈妈
             for i, (_, _, yaw, _) in enumerate(pack):
@@ -231,7 +269,7 @@ class WolvesScene:
                                mode=herd_mode)
         groups.append((pose, bases))
         # 狼群（300s 后进入；480-700s 追妈妈）
-        pack = wolves.pack_positions(t, center=(TREE_AT[0], TREE_AT[1] - 1.0))
+        pack = self._wolf_pack(t)
         if 480.0 <= t < 700.0:
             mx, mz = self._mother_xy(t)
             for i, (_, _, yaw, _) in enumerate(pack):
@@ -249,6 +287,12 @@ class WolvesScene:
                                    wyaw, mode=wmode)
             groups.append((pose, bases))
         return groups
+
+    # ---------------------------------------------------------------- 粒子 --
+    def particles(self, t):
+        """氛围粒子层（allin fx）：夜风寒尘。"""
+        self._mote_layer.update(t)
+        return [self._mote_layer]
 
     def overlays(self, t):
         return [self._sub.at(t)]

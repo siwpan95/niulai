@@ -20,8 +20,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from niulai.acts import act1_stand, act2_migration, act3_leopard, act4_wolves, \
-    act5_finale, act6_wake
+from niulai.acts import act0_prologue, act1_stand, act2_migration, \
+    act3_leopard, act4_wolves, act5_finale, act6_wake
 from niulai.audio import tts
 
 FF = os.environ.get('NIULAI_FFMPEG', 'ffmpeg')
@@ -32,23 +32,25 @@ OST = os.path.join(OUT, 'ost')
 
 # 幕 -> (场景模块, 幕时长, OST 路径或 None, 视频源, extra 氛围轨或 None)
 ACTS = {
+    'act0': (act0_prologue, 360.0, None,
+             os.path.join(FINAL, 'act0_1080.mp4'), None),
     'act1': (act1_stand, 300.0, None,
-             os.path.join(FINAL, 'act1_stand_10800-19800.mp4'),
+             os.path.join(FINAL, 'act1_1080.mp4'),
              os.path.join(OST, 'foley_dawn.wav')),
     'act2': (act2_migration, 720.0,
-             os.path.join(OST, 'loop_ost_migration_21600f.wav'),
-             os.path.join(FINAL, 'act2_migration_19800-41400.mp4'), None),
+             os.path.join(OST, 'suite_migration_720.wav'),
+             os.path.join(FINAL, 'act2_1080.mp4'), None),
     'act3': (act3_leopard, 720.0,
-             os.path.join(OST, 'loop_ost_friend_21600f.wav'),
-             os.path.join(FINAL, 'act3_leopard_41400-63000_1080.mp4'), None),
+             os.path.join(OST, 'suite_friend_720.wav'),
+             os.path.join(FINAL, 'act3_1080.mp4'), None),
     'act4': (act4_wolves, 1080.0,
-             os.path.join(OST, 'loop_ost_wolves_32400f.wav'),
-             os.path.join(FINAL, 'act4_wolves_63000-95400_1080.mp4'), None),
+             os.path.join(OST, 'suite_wolves_1080.wav'),
+             os.path.join(FINAL, 'act4_1080.mp4'), None),
     'act5': (act5_finale, 900.0,
-             os.path.join(OST, 'loop_ost_friend_27000f.wav'),
+             os.path.join(OST, 'suite_friend_900.wav'),
              os.path.join(FINAL, 'act5_1080.mp4'), None),
     'act6': (act6_wake, 720.0,
-             os.path.join(OST, 'loop_ost_credits_21600f.wav'),
+             os.path.join(OST, 'suite_credits_720.wav'),
              os.path.join(FINAL, 'act6_1080.mp4'),
              os.path.join(OST, 'foley_reprise.wav')),
 }

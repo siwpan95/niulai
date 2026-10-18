@@ -20,6 +20,7 @@ from . import FPS, MASTER_SEED, RESOLUTION, TOTAL_DURATION, __version__
 from .acts import (act0_prologue, act1_stand, act2_migration,  # noqa: F401
                    act3_leopard, act4_wolves, act5_finale, act6_wake,
                    act7_credits)
+from .pipeline import profile as pipe_profile
 from .pipeline import render as pipe
 from .timeline import ACT_NAMES, Timeline
 
@@ -47,6 +48,9 @@ def _cmd_render(args):
             f'[{a0}, {a1}) — check ACTS table (T0 x fps)')
     w, h = (int(x) for x in args.size.lower().split('x'))
     scene = scene_cls(seed=args.seed)
+    profile = pipe_profile.get_profile(args.profile)
+    if hasattr(scene, 'set_profile'):
+        scene.set_profile(profile)
     n = args.end - args.start
     t0 = time.perf_counter()
 
@@ -59,7 +63,8 @@ def _cmd_render(args):
 
     if args.png:
         manifest = pipe.render_range(scene, args.start, args.end, args.out,
-                                     size=(w, h), fps=FPS, on_progress=progress)
+                                     size=(w, h), fps=FPS, on_progress=progress,
+                                     profile=profile)
         # 尊重 --manifest：raw pipe 分支一直遵守，PNG 分支此前硬写进 --out，
         # 导致外部（scripts/render_parallel.py 的分块清单）找不到清单。
         # 不传时行为完全不变。
@@ -76,7 +81,8 @@ def _cmd_render(args):
             f"{args.act}_{args.start}-{args.end}.mp4")
         manifest = pipe.render_pipe(scene, args.start, args.end, out_mp4,
                                     size=(w, h), fps=FPS, ffmpeg=args.ffmpeg,
-                                    on_progress=progress, audio=args.audio)
+                                    on_progress=progress, audio=args.audio,
+                                    profile=profile)
         el = time.perf_counter() - t0
         print(f'[render] OK {n} frames in {el:.1f}s ({n / el:.1f} fps) '
               f'-> {out_mp4}')
@@ -132,6 +138,9 @@ def main(argv=None):
     pr.add_argument('--png', action='store_true',
                     help='legacy PNG-sequence path (slow); default is raw pipe')
     pr.add_argument('--ffmpeg', default=os.environ.get('NIULAI_FFMPEG', 'ffmpeg'))
+    pr.add_argument('--profile', default='raw', choices=['raw', 'enhanced'],
+                    help='raw=忠实粗粝（默认）；enhanced=WBOIT 透明水面 + '
+                         'Bloom 后处理（引擎能力展示，默认关闭）')
     pr.set_defaults(func=_cmd_render)
 
     pa = sub.add_parser('assemble', help='assemble PNG sequence into MP4')

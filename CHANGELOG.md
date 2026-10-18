@@ -3,6 +3,71 @@
 本项目所有值得注意的变更都会记录在此文件中。
 格式基于 Keep a Changelog，版本号遵循语义化版本。
 
+## [0.5.0] - 2026-10-18
+
+### Added（P4 · 内容填充 + 双引擎全量增强 + 本机全片重制）
+
+- **内容填充（联网调研驱动）**：
+  - `docs/原片素材调研.md`：九源调研记账（维基语录为台词单一事实来源），
+    台词台账（17 条 S1 全量采用裁定）+ 二创梗甄别 + 编辑裁定（E1-E5）；
+  - 台词库 **36 -> 46 句**：act0 序幕新增入梦问答 4 句（云玎首次开口，
+    "我们不一样，是吗？"）、act2 跳溪前后 +2、act3 初遇"我是豹啦"、
+    act4 妈妈嘱托补全 wikiquote 原文、act5 牛爸爸"盘中餐"训诫 + 豹拉嘱托
+    仿写句（调研 E3）、act1/act7 各 +1；九张片尾卡；
+  - `docs/分幕脚本.md`：新增各幕节拍表（多源大纲交叉核定）+ 全量台词审计镜像；
+  - `audio/tts.py`：VOICE_MAP 新增云玎（zh-CN-XiaoyiNeural）；
+    `voice_mix.py` 新增 act0 配音（入梦问答）。
+- **allin-engine 全量增强（逻辑/智能层）**：
+  - `brains/btree.py`：**行为树决策**（allin `ai.decision.behavior_tree` 声明式
+    spec）——狼群五态势（circle/stalk/charge/bite/chase）由妈妈体力曲线/
+    总攻窗/狼群距离等**世界状态**驱动（替换硬编时间阈值）；act2 牛群蛇逼
+    惊呆反应（<9u 立定）；stance 是 (t, 世界状态) 纯函数，确定性不破坏；
+  - `fx/particles.py` + `fx/layer.py`：**粒子场接入**（allin `fx.particle_np`）
+    ——act2 三 z 平面风沙带（跟牛群 x 漂移）+ 跃溪飞沫（窗 415-478s）+
+    act4 夜风寒尘；固定步长推进 + 种子注入确定性（引擎 `_rng` 无 seed 参数，
+    注入记账见 REFERENCE）；GPU 点精灵渲染（雾/色调公式与主体逐字一致）；
+  - `brains/navigation.py`：**迁徙 A\* 领队路径**（allin `world.pathfinding`
+    grid_astar）——栅格化地形（可走 = h > WATER_Y）+ 终点吸附南岸干地 +
+    LOS 拉直，陆地段（progress<0.80）由引擎规划，入水段保留手搓编排，
+    衔接逐分量连续（tests/test_navigation.py 钉住）；
+  - 评估后不接入：`ai.narrative` / `ai.dialogue`（分支叙事引擎，线性复刻片
+    无分支需求——见 docs/增强规划_P4.md §四）。
+- **world3d 全量增强（渲染/演出层，默认关闭 profile）**：
+  - `pipeline/profile.py`：raw（默认，忠实粗粝）/ **enhanced**（`--profile
+    enhanced` 显式开启）——水面 **WBOIT 顺序无关透明**（world3d `engine.oit`，
+    深度自 rt_a blit 保证岸/角色遮挡，act2 河面 alpha 0.72）+ **Bloom 后处理**
+    （world3d `engine.postfx.PostChain`：软膝盖阈值 + Karis + 金字塔）；
+  - 场景协议：`scene.set_profile(profile)` + `scene.water(t)` 钩子；
+  - enhanced 与 raw 跨进程逐帧一致（tests/test_profile.py 钉住；WBOIT 不可用
+    时自动跳过该步，不静默失败）。
+- **本机重制基础设施**：
+  - `scripts/render_all.py`：八幕顺序 + 6 并发分块 + resume + 720p lanczos
+    升采 1080p（**seed 铁律**：显式传 MASTER_SEED，render_parallel 默认
+    seed=0 会静默换地形——实测踩坑）；
+  - `scripts/make_audio.py`：音频资产生成一条龙（6 条变奏组曲 + 3 CC0 拟音 +
+    6 幕镜头拟音事件轨，49s 全部完成）；
+  - `scripts/assemble_film.py`：逐幕 numpy 混音（峰值硬校验 >0.98 报错）+
+    mux + 八幕 concat + 总时长验收（5160s ±1）。
+
+### Fixed
+
+- act4 台词时间窗重叠（500-508 与 506-513 相交——冒烟测试只查 act1 未暴露），
+  顺带把妈妈嘱托补全为 wikiquote 原文全文；
+- 粒子场回退重模拟不一致：发射器 `_accum` / 力场 `_time` 跨重建复用带残余
+  状态（实测踩坑），`_build()` 现在显式清零；
+- `OffscreenRenderer.__init__` 的 `glClearColor(sky)` 在 profile 重构中一度
+  丢失（raw 路径清屏色变黑——proof 目检抓回），已恢复并加注释。
+
+### Verified
+
+- 测试 **11 个模块全绿**：smoke / voices / spots / variations / instancing
+  （BT 分组后实例化 vs CPU 仍逐帧 md5 相同）/ parallel / btree / particles /
+  navigation / profile / determinism（跨进程 3 帧）；
+- enhanced proof：act2 跃溪镜 WBOIT 水面 + Bloom 跨进程逐帧一致，
+  且与 raw 逐帧不同（3/3 帧差异——水面确实换了画法）；
+- raw proof 目检：act0 入梦字幕（云玎句）、act2 渡口全景、act4 夜袭
+  （BT 态势 + 夜尘粒子）。
+
 ## [0.4.0] - 2026-10-17
 
 ### Added（三任务：TTS 配音 / GPU 实例化 / 过片细修）

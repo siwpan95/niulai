@@ -47,6 +47,7 @@ VOICE_MAP = {
     '牛来': 'zh-CN-YunxiNeural',          # 少年感（幼犊 / 少年期）
     '牛爸爸': 'zh-CN-YunyangNeural',      # 沉稳可靠 —— 父辈
     '豹拉': 'zh-CN-YunxiaNeural',         # 幼崽（act3 初遇）
+    '云玎': 'zh-CN-XiaoyiNeural',         # 云雀（梦境旁观者，轻亮女声）
 }
 # 成年期覆盖：act5 传承决战 / act6 梦醒而立 里牛来、豹拉都已长大
 VOICE_ADULT = {

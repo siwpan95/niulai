@@ -5,14 +5,22 @@
 - 领队（牛爸爸不在场的年长母牛）沿迁徙路径前进；
 - 槽位 = 领队后方 3 列 x N 行的网格，每槽带确定性抖动（哈希）；
 - 整体 progress = f(t)（纯函数），任一帧可复现。
+
+领队路径（2026-10-18 起双轨）：
+- progress < LAND_END：**allin A-star 规划**（brains/navigation.py，陆地段，
+  终点 (12,44) 与本函数手搓段在 p=0.80 逐分量衔接）；
+- progress >= LAND_END：原手搓三段 smoothstep（入水过河段，act2 受编排节拍）；
+- A* 不可用（无路等）时全段回落手搓路径，不静默失败。
 """
 import math
 
 from .. import MASTER_SEED
+from . import navigation
 
 HERD_SIZE = 36                     # 30-50 头（全哥口径）
 COLS, ROWS = 6, 6
 SLOT_DX, SLOT_DZ = 2.6, 3.4        # 槽间距（列 x / 行 z）
+LAND_END = 0.80                    # A* 陆地段进度上限（衔接手搓入水段）
 
 
 def _hash01(i, salt):
@@ -26,10 +34,16 @@ def _hash01(i, salt):
 def migration_path(progress):
     """progress∈[0,1] -> 领队世界位置 (x, z)。
 
-    路线：绿地 (62,-16) 出发 -> 向西南下谷 -> 干河谷 -> 河边渡口 (10, 52)。
-    分段 smoothstep 拼接口（确定性）。
+    陆地段走 allin A* 规划折线（brains/navigation）；入水段/退路走
+    原手搓三段 smoothstep 拼接口（确定性）。
     """
     p = min(1.0, max(0.0, progress))
+    if p < LAND_END:
+        route = navigation.migration_route(MASTER_SEED)
+        if route is not None:
+            pt = navigation.route_point(route, p / LAND_END)
+            if pt is not None:
+                return pt
 
     def seg(a, b, u):
         u = u * u * (3.0 - 2.0 * u)
