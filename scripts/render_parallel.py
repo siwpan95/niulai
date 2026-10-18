@@ -144,11 +144,27 @@ def concat_blocks(mp4s, out_mp4, ffmpeg, audio=None):
 def run(act, start, end, out_root, size='1280x720', seed=0, workers=2,
         chunk_seconds=DEFAULT_CHUNK_SECONDS, fps=DEFAULT_FPS, png=False,
         ffmpeg='ffmpeg', resume=False, concat=None, audio=None,
-        dry_run=False):
+        profile=None, dry_run=False):
     """切块 -> 并发渲 -> 合并 manifest ->（可选）concat。返回统计字典。"""
     chunk_frames = max(1, int(round(chunk_seconds * fps)))
     blocks = plan_chunks(start, end, chunk_frames)
     os.makedirs(os.path.join(out_root, 'blocks'), exist_ok=True)
+    # ⚠ profile 戳：resume 只看块文件存在性，不认 profile —— 若同一目录被两套
+    # profile 复用，会静默拿旧块顶替（P5 实测：pbr 全片重渲被 raw 块顶掉，
+    # 白渲 1.5 小时）。这里写入戳并在 resume 时校验，不一致直接报错。
+    stamp = os.path.join(out_root, '_profile.txt')
+    tag = profile or 'raw'
+    if os.path.isfile(stamp):
+        with open(stamp, encoding='utf-8') as f:
+            old = f.read().strip()
+        if old and old != tag:
+            raise SystemExit(
+                f'[parallel] profile mismatch in {out_root}: '
+                f'blocks are {old!r}, requested {tag!r} — '
+                f'use a separate output dir or clear it')
+    else:
+        with open(stamp, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(tag + '\n')
     print(f'[parallel] act={act} frames {start}-{end} '
           f'({end - start} frames) -> {len(blocks)} blocks x {chunk_frames}f, '
           f'workers={workers}, png={png}')
@@ -198,7 +214,8 @@ def run(act, start, end, out_root, size='1280x720', seed=0, workers=2,
     running, failed = [], []
     for job in pending:
         i, a, b, prod, mani, log = job
-        cmd = build_cmd(act, a, b, size, seed, prod, mani, png, ffmpeg)
+        cmd = build_cmd(act, a, b, size, seed, prod, mani, png, ffmpeg,
+                        profile=profile)
         try:
             fp = open(log, 'w', encoding='utf-8', errors='replace')
             proc = subprocess.Popen(cmd, cwd=ROOT, stdout=fp,
@@ -300,7 +317,7 @@ def main(argv=None):
                 workers=args.workers, chunk_seconds=args.chunk_seconds,
                 fps=args.fps, png=args.png, ffmpeg=args.ffmpeg,
                 resume=args.resume, concat=args.concat, audio=args.audio,
-                dry_run=args.dry_run)
+                profile=args.profile, dry_run=args.dry_run)
     return 1 if stats.get('failed') else 0
 
 
