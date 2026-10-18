@@ -96,6 +96,21 @@ P0 交付物：`output/牛来_序幕_荒漠飞雀_60s.mp4`（1280×720，30fps�
 P1 四幕 lanczos 升采 1080p；act5-7 原生 1080p；七处过缝帧帧唯一
 （md5 验证无重复无跳空）；全量解码无错误。装配脚本：`scripts/assemble_final.py`。
 
+## P3 状态（已交付 · 2026-10-18）
+
+面向"能跑起来 / 声画质量 / 吞吐"的四项增强，详见 `docs/增强规划_P3.md`。
+
+| 项 | 交付 | 实测 |
+|----|------|------|
+| **P3-0 环境自举** | `scripts/bootstrap.py` 一键建 venv + 装依赖 + 探测 ffmpeg；`scripts/check_env.py` 体检输出 PASS/WARN/FAIL | 干净环境 1m42s 完成自举 |
+| **P3-1a 多角色配音** | `niulai/audio/tts.py` 角色→音色映射（`--engine edge`），act5-6 自动切成年嗓；SAPI 同嗓仍为默认 | edge-tts 联网合成 22.9KB/1.92s；zh-CN 音色 8 个 |
+| **P3-2 分块并行渲染** | `scripts/render_parallel.py` 切块 + N 进程并发 + `--resume` + concat | 12 帧并行 vs 串行**逐帧 md5 相同**；2 workers 1.66× |
+| **P3-3a OST 变奏** | `niulai/audio/variations.py` 8 变体程序化派生 + 确定性拼接，消除 180s 循环重复感 | wolves × 8 → 60s 轨 5.05MB，无拼接爆音 |
+| **P3-4 镜头级拟音** | `niulai/audio/spots.py` 由 `scene.shots` 派生音效事件（蹄声/涉水/狼嚎/振翅/发力/阵风） | act2 772 个事件轨，60.6MB |
+
+两项"可选增强"默认关闭、不静默替换既有设定：多角色配音（`--engine edge`）、
+生成式配乐（P3-3b，需 GPU）。
+
 ## 快速开始
 
 ### 0) 环境自举（新机器先跑这一步）
