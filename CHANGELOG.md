@@ -63,10 +63,18 @@
 - 测试 **11 个模块全绿**：smoke / voices / spots / variations / instancing
   （BT 分组后实例化 vs CPU 仍逐帧 md5 相同）/ parallel / btree / particles /
   navigation / profile / determinism（跨进程 3 帧）；
+- **全片重制**：`output/牛来_86分钟_全片_1080p.mp4`（86:00.02 = 5160.02s，
+  745MB，1920×1080 30fps h264+aac，八幕混音峰值 0.08–0.51 无削波，
+  **全量解码零错误**）；八幕渲染 6 workers 聚合 26.7–30.7 fps（720p 幕）；
+- **配音版**：`牛来_86分钟_全片_1080p_配音版.mp4`（46 句 SAPI 同嗓，
+  含 act0 入梦问答 4 句，86:00.02，全量解码零错误）；
 - enhanced proof：act2 跃溪镜 WBOIT 水面 + Bloom 跨进程逐帧一致，
   且与 raw 逐帧不同（3/3 帧差异——水面确实换了画法）；
 - raw proof 目检：act0 入梦字幕（云玎句）、act2 渡口全景、act4 夜袭
-  （BT 态势 + 夜尘粒子）。
+  （BT 态势 + 夜尘粒子）、成片 act3 河畔特写；
+- **0xC0000409 记账**：Windows 高并发下 CLI 子进程在退出阶段（pyglet GL
+  atexit）偶发 fail-fast，块产物已完整——render_parallel 改为
+  rc!=0 时先验 block_done()，产物完整计成功（d994b9f）。
 
 ## [0.4.0] - 2026-10-17
 
