@@ -57,10 +57,13 @@ class Rig:
 
     PARTS = ()
 
-    def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0, scale=1.0):
+    def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0, scale=1.0, kind=None):
         self.origin = Vec3(*origin)
         self.yaw = yaw
         self.scale = scale          # 整体缩放（牛来"奋力站起"的伸展用）
+        # PBR 材质映射键（pbr_bridge 按网格名前缀选材质）：
+        # kind 默认取类名小写；Quadruped 由 spec 身份派生（specs.SPEC_KIND）。
+        self.kind = kind or self.__class__.__name__.lower()
 
     def pose(self, t):
         """t -> {段名: Mat4}（纯函数；确定性由调用方用量化后的 t 保证）。"""
@@ -89,7 +92,9 @@ class Rig:
         out = []
         for name, sx, sy, sz, color, off in self.PARTS:
             m = base @ pose[name]
-            out.append(shaded_box(sx, sy, sz, color, offset=off).transform(m))
+            md = shaded_box(sx, sy, sz, color, offset=off).transform(m)
+            md.name = f'{self.kind}:{name}'   # PBR 材质映射键（pbr_bridge）
+            out.append(md)
         return out
 
 

@@ -24,7 +24,7 @@ class Snake(Rig):
             [(f'seg{i}', *self.SEG, self.COLOR, (0.0, 0.0, 0.0))
              for i in range(self.SEGMENTS)]
             + [('head', *self.HEAD, self.HEAD_COLOR, (0.0, 0.0, 0.0))])
-        super().__init__(origin=(0.0, 0.0, 0.0), yaw=yaw)
+        super().__init__(origin=(0.0, 0.0, 0.0), yaw=yaw, kind='snake')
         self.ground = ground or (lambda x, z: 0.0)
         # path_fn：场景可注入自定义路径（纯函数 t -> (x, z)）。
         # 默认路径按小 t 设计（序幕尺度）；**长幕必须注入**——

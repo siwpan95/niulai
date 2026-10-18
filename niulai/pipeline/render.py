@@ -122,13 +122,30 @@ class OffscreenRenderer:
             width / float(height), z_near=0.1, z_far=600.0, fov=fov)
         glEnable(GL_DEPTH_TEST)
         glClearColor(sky[0], sky[1], sky[2], 1.0)   # 清屏色 == 雾色（铁律）
-        # enhanced 资源
+        # enhanced / pbr 资源
         self._rt_a = self._rt_b = None
         self._oit = None
         self._post = None
         self._copy_prog = None
+        self._w3renderer = None
         if self.profile.name == 'enhanced':
             self._build_enhanced()
+        elif self.profile.name == 'pbr':
+            self._build_pbr()
+
+    def _build_pbr(self):
+        """P5 全量 PBR：world3d Renderer（MRT + 天空 + SSAO + Bloom + 合成）。"""
+        from world3d.engine.postfx import PostSettings
+        from world3d.engine.renderer import Renderer
+        # 曝光/泛光调校：程序化天空 + IBL 下默认参数会把画面推白（实测），
+        # 压曝光 + 抬 Bloom 阈值保住沙丘纹理的对比。
+        settings = PostSettings()
+        settings.exposure = 0.62
+        settings.bloom_threshold = 1.9
+        settings.bloom_intensity = 0.25
+        settings.vignette = 0.30
+        self._w3renderer = Renderer(self.width, self.height,
+                                    post_settings=settings)
 
     def _build_enhanced(self):
         from world3d.engine.oit import WBOIT, supported
@@ -244,8 +261,39 @@ class OffscreenRenderer:
         prog['uTex'] = 0
         FullscreenQuad().draw(prog)
 
+    # ------------------------------------------------------------ PBR --
+    def _pbr_pack_for(self, scene):
+        """幕 -> PbrPack（惰性建，缓存到场景实例上；IBL 每块烘焙一次）。"""
+        from .pbr_bridge import PbrPack, act_of
+        pack = getattr(scene, '_pbr_pack', None)
+        if pack is None:
+            pack = PbrPack(act_of(getattr(scene, 'NAME', '')), self._w3renderer)
+            scene._pbr_pack = pack
+        return pack
+
+    def _render_pbr(self, scene, meshes, eye, target, overlays, instanced):
+        """P5 全量 PBR：world3d Renderer 端到端（MRT/天空/SSAO/Bloom/合成）。
+
+        粒子层不进本路径（allin fx 已在 raw/enhanced 验证；PBR 深度图
+        与自定义点精灵的深度合成不在本档目标内）。
+        """
+        from pyglet.gl import GL_DEPTH_TEST, glEnable
+        win = self.window
+        win.switch_to()
+        pack = self._pbr_pack_for(scene)
+        w3scene = pack.build_frame(meshes, instanced)
+        cam = pack.camera(eye, target)
+        self._w3renderer.render(cam, w3scene, window=win)
+        pack.cleanup_frame()
+        glEnable(GL_DEPTH_TEST)
+        if overlays:
+            for ov in overlays:
+                ov.draw(win)
+        return read_pixels(win)
+
     def close(self):
-        for obj in (self._rt_a, self._rt_b, self._oit, self._post):
+        for obj in (self._rt_a, self._rt_b, self._oit, self._post,
+                    self._w3renderer):
             try:
                 if obj is not None:
                     obj.delete()
@@ -268,10 +316,16 @@ class OffscreenRenderer:
         glClearColor(sky[0], sky[1], sky[2], 1.0)
 
     def render_frame(self, meshes, eye, target, path, atmosphere=None,
-                     overlays=None, particles=None, water=None):
+                     overlays=None, particles=None, water=None, scene=None,
+                     instanced=None):
         """画一帧并存 PNG，返回该文件的 md5。"""
         if atmosphere is not None:
             self.apply_atmosphere(*atmosphere)
+        if self.profile.name == 'pbr' and self._w3renderer is not None \
+                and scene is not None:
+            self._render_pbr(scene, meshes, eye, target, overlays, instanced)
+            capture(self.window, path)
+            return md5_of(path)
         if self.profile.name == 'enhanced' and self._rt_a is not None:
             self._render_enhanced(meshes, eye, target, overlays, None,
                                   particles, water)
@@ -298,7 +352,7 @@ class OffscreenRenderer:
 
     def render_frame_raw(self, meshes, eye, target, overlays=None,
                          atmosphere=None, instanced=None, particles=None,
-                         water=None):
+                         water=None, scene=None):
         """画一帧并返回原始 RGBA 字节（供 raw pipe 直喂 ffmpeg）。
 
         overlays：可选的屏幕空间叠加层列表（字幕等），在 3D 之后、
@@ -310,10 +364,15 @@ class OffscreenRenderer:
         世界空间点精灵，3D 之后、overlays 之前绘制；层内状态已由
         场景的 particles(t) 预推进到本帧）；
         water：[(positions, color, alpha), ...] WBOIT 透明面（仅 enhanced
-        profile 生效，由场景的 water(t) 钩子给出）。
+        profile 生效，由场景的 water(t) 钩子给出）；
+        scene：niulai 场景对象（仅 pbr profile 需要——桥接包挂它缓存）。
         """
         if atmosphere is not None:
             self.apply_atmosphere(*atmosphere)
+        if self.profile.name == 'pbr' and self._w3renderer is not None \
+                and scene is not None:
+            return self._render_pbr(scene, meshes, eye, target, overlays,
+                                    instanced)
         if self.profile.name == 'enhanced' and self._rt_a is not None:
             return self._render_enhanced(meshes, eye, target, overlays,
                                          instanced, particles, water)
@@ -363,6 +422,7 @@ def render_range(scene, start, end, out_dir, size=(1280, 720), fps=30,
     water_fn = getattr(scene, 'water', None)
     particles_fn = getattr(scene, 'particles', None)
     overlays_fn = getattr(scene, 'overlays', None)
+    crowd_fn = getattr(scene, 'crowd', None)
     try:
         for frame in range(start, end):
             t = frame / float(fps)
@@ -371,10 +431,12 @@ def render_range(scene, start, end, out_dir, size=(1280, 720), fps=30,
             particles = particles_fn(t) if particles_fn else None
             water = water_fn(t) if water_fn else None
             overlays = overlays_fn(t) if overlays_fn else None
+            crowd = crowd_fn(t) if crowd_fn else None
             p = frame_path(out_dir, frame)
             manifest[frame] = r.render_frame(meshes, eye, target, p,
                                              overlays=overlays,
-                                             particles=particles, water=water)
+                                             particles=particles, water=water,
+                                             scene=scene, instanced=crowd)
             if on_progress is not None:
                 on_progress(frame, end)
     finally:
@@ -451,7 +513,8 @@ def render_pipe(scene, start, end, out_path, size=(1280, 720), fps=30,
             atm = atm_fn(t) if atm_fn else None
             instanced = crowd_fn(t) if crowd_fn else None
             _, _, raw = r.render_frame_raw(meshes, eye, target, overlays, atm,
-                                           instanced, particles, water)
+                                           instanced, particles, water,
+                                           scene=scene)
             manifest[frame] = hashlib.md5(raw).hexdigest()
             try:
                 proc.stdin.write(raw)

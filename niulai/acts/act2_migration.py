@@ -22,7 +22,7 @@ from ..cast import perf
 from ..cast.calf import Calf
 from ..cast.quadruped import Quadruped
 from ..cast.snake import Snake
-from ..cast.specs import MOTHER_SPEC
+from ..cast.specs import MOTHER_SPEC, register_spec_kind
 from ..brains import btree, migration
 from ..brains.world import CastWorld
 from ..fx import particles as fx_particles
@@ -313,3 +313,4 @@ _COW_LIKE = {
                'leg': (0.40, 0.30, 0.22), 'horn': (0.7, 0.64, 0.52),
                'ear': (0.44, 0.33, 0.25)},
 }
+register_spec_kind(_COW_LIKE, 'cow')

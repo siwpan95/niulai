@@ -72,7 +72,7 @@ class Skylark(Rig):
     )
 
     def __init__(self, t=0.0):
-        super().__init__(origin=(0.0, 0.0, 0.0), yaw=0.0)
+        super().__init__(origin=(0.0, 0.0, 0.0), yaw=0.0, kind='skylark')
         self.place(t)
 
     def place(self, t):

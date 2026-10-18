@@ -37,7 +37,7 @@ class Calf(Rig):
     )
 
     def __init__(self, origin=(0.0, 0.0, 0.0), yaw=0.0):
-        super().__init__(origin=origin, yaw=yaw)
+        super().__init__(origin=origin, yaw=yaw, kind='calf')
 
     def pose(self, t, mode='lie', rise_u=0.0, **_kw):
         """伏地挣扎 / 奋力站起（rise）。

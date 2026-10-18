@@ -65,3 +65,24 @@ FATHER_SPEC = {
                'leg': (0.33, 0.24, 0.17), 'horn': (0.86, 0.80, 0.68),
                'ear': (0.34, 0.25, 0.18)},
 }
+
+
+# ---- spec 身份 -> PBR 材质键（pbr_bridge 按网格名前缀选材质；P5-1）----
+# id(spec) 注册表：Quadruped 无需每个构造点传 kind，spec 单例身份即材质键。
+SPEC_KIND = {}
+
+
+def _register(spec, kind):
+    SPEC_KIND[id(spec)] = kind
+    return spec
+
+
+MOTHER_SPEC = _register(MOTHER_SPEC, 'cow')
+WOLF_SPEC = _register(WOLF_SPEC, 'wolf')
+LEOPARD_SPEC = _register(LEOPARD_SPEC, 'leopard')
+ADULT_NIULAI_SPEC = _register(ADULT_NIULAI_SPEC, 'niulai')
+
+
+def register_spec_kind(spec, kind):
+    """公开注册口（act2 的 _COW_LIKE 等模块内规格用）。"""
+    return _register(spec, kind)

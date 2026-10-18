@@ -25,15 +25,19 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RenderProfile:
-    """name: raw | enhanced；wboit/bloom 为 enhanced 的能力开关。"""
+    """name: raw | enhanced | pbr；wboit/bloom/pbr 为能力开关。"""
     name: str = 'raw'
     wboit: bool = False
     bloom: bool = False
+    pbr: bool = False
 
 
 PROFILES = {
     'raw': RenderProfile('raw'),
     'enhanced': RenderProfile('enhanced', wboit=True, bloom=True),
+    # P5 全量 PBR：world3d Renderer（proctex 贴图 + material + env IBL +
+    # 程序化天空 + SSAO + Bloom + ACES + 透明排序 + 实例化剔除）
+    'pbr': RenderProfile('pbr', bloom=True, pbr=True),
 }
 
 

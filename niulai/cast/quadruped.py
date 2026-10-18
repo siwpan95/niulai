@@ -80,10 +80,12 @@ def _build_parts(spec):
 class Quadruped(Rig):
     """四足角色。pose 模式：walk / run / stand / lie。"""
 
-    def __init__(self, spec, origin=(0.0, 0.0, 0.0), yaw=0.0):
+    def __init__(self, spec, origin=(0.0, 0.0, 0.0), yaw=0.0, kind=None):
         self.spec = spec
         self.PARTS = _build_parts(spec)
-        super().__init__(origin=origin, yaw=yaw)
+        from .specs import SPEC_KIND
+        super().__init__(origin=origin, yaw=yaw,
+                         kind=kind or SPEC_KIND.get(id(spec), 'quadruped'))
 
     # ------------------------------------------------------------ 布局常量 --
     def _layout(self, body_y):

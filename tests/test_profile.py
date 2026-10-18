@@ -62,9 +62,9 @@ def test_scene_protocol():
     check('water alpha 半透明', 0.0 < water[0][2] < 1.0)
 
 
-def _render(out_dir, profile, frames):
+def _render(out_dir, profile, frames, act='act2_migration'):
     cmd = [sys.executable, '-m', 'niulai', 'render',
-           '--act', 'act2_migration', '--start', str(frames[0]),
+           '--act', act, '--start', str(frames[0]),
            '--end', str(frames[-1] + 1), '--size', '320x200',
            '--out', out_dir, '--png', '--profile', profile,
            '--manifest', os.path.join(out_dir, 'manifest.json')]
@@ -96,10 +96,28 @@ def test_enhanced_determinism():
               'WBOIT 可能未生效')
 
 
+def test_pbr_determinism():
+    print('test_pbr_determinism')
+    # act4 夜袭（月光 + 营火点光 + 全 PBR）：跨进程两次逐帧一致
+    frames = [73500, 73501, 73502]
+    with tempfile.TemporaryDirectory() as tmp:
+        d1, d2 = os.path.join(tmp, 'p1'), os.path.join(tmp, 'p2')
+        m1 = _render(d1, 'pbr', frames, act='act4_wolves')
+        m2 = _render(d2, 'pbr', frames, act='act4_wolves')
+        ok = all(m1[k] == m2.get(k) for k in m1)
+        check('pbr 跨进程逐帧一致', ok and set(m1) == set(m2))
+        d3 = os.path.join(tmp, 'r1')
+        m3 = _render(d3, 'raw', frames, act='act4_wolves')
+        diff = [k for k in m1 if m1[k] != m3.get(k)]
+        print(f'    (info) pbr vs raw 差异帧: {len(diff)}/{len(m1)}')
+        check('pbr 与 raw 有差异（PBR 管线确实生效）', len(diff) > 0)
+
+
 def main():
     test_registry()
     test_scene_protocol()
     test_enhanced_determinism()
+    test_pbr_determinism()
     if FAILED:
         print(f'\nFAILED {len(FAILED)}: {FAILED}')
         return 1

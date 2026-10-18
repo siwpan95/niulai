@@ -138,9 +138,11 @@ def main(argv=None):
     pr.add_argument('--png', action='store_true',
                     help='legacy PNG-sequence path (slow); default is raw pipe')
     pr.add_argument('--ffmpeg', default=os.environ.get('NIULAI_FFMPEG', 'ffmpeg'))
-    pr.add_argument('--profile', default='raw', choices=['raw', 'enhanced'],
+    pr.add_argument('--profile', default='raw',
+                    choices=['raw', 'enhanced', 'pbr'],
                     help='raw=忠实粗粝（默认）；enhanced=WBOIT 透明水面 + '
-                         'Bloom 后处理（引擎能力展示，默认关闭）')
+                         'Bloom（P4）；pbr=world3d 全量 PBR 管线'
+                         '（proctex 贴图/material/env IBL/天空/SSAO，P5）')
     pr.set_defaults(func=_cmd_render)
 
     pa = sub.add_parser('assemble', help='assemble PNG sequence into MP4')
