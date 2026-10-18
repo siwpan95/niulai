@@ -56,10 +56,16 @@ ACTS = {
 }
 
 
-def main(acts=None, engine='sapi'):
+def main(acts=None, engine='sapi', profile=None):
     names = acts or list(ACTS)
+    # profile=pbr 时只换视频源（台词/OST 与画面 profile 无关）
+    vdir = os.path.join(OUT, 'final') if profile in (None, 'raw') \
+        else os.path.join(OUT, f'final_{profile}')
+    ptag = '' if profile in (None, 'raw') else f'_{profile}'
     for name in names:
         mod, dur, ost, video, extra = ACTS[name]
+        if profile not in (None, 'raw'):
+            video = os.path.join(vdir, os.path.basename(video))
         print(f'== {name}: {len(mod.LINES)} 句台词 (engine={engine})')
         diag = os.path.join(FINAL, f'_diag_{name}.wav')
         # act=name：让 act5/act6 自动切成年嗓（牛来/豹拉长大后换音色）
@@ -78,7 +84,7 @@ def main(acts=None, engine='sapi'):
             mixed = fin
         # sapi 沿用既有 v4 命名（避免覆盖已交付母带）；edge 单独一份便于 AB 对比
         suffix = 'v4' if engine == 'sapi' else engine
-        out_mp4 = os.path.join(FINAL, f'{name}_voice_{suffix}.mp4')
+        out_mp4 = os.path.join(vdir, f'{name}_voice_{suffix}{ptag}.mp4')
         tts.remux(video, mixed, out_mp4, ffmpeg=FF)
         print(f'  -> {out_mp4} ({n} 句合成)')
     print('VOICE_MIX_DONE')
@@ -92,6 +98,8 @@ if __name__ == '__main__':
     ap.add_argument('--engine', default='sapi', choices=['sapi', 'edge'],
                     help='sapi = 全片同嗓（默认，离线）; '
                          'edge = 多角色音色（需联网 + ffmpeg）')
+    ap.add_argument('--profile', default=None, choices=[None, 'raw', 'pbr'],
+                    help='取哪套视频源：raw=output/final，pbr=output/final_pbr')
     args = ap.parse_args()
     main([a.strip() for a in args.acts.split(',')] if args.acts else None,
-         engine=args.engine)
+         engine=args.engine, profile=args.profile)

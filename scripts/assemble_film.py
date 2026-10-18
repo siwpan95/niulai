@@ -28,7 +28,6 @@ sys.path.insert(0, ROOT)
 
 FF = os.environ.get('NIULAI_FFMPEG', 'ffmpeg')
 OUT = os.path.join(ROOT, 'output')
-FINAL = os.path.join(OUT, 'final')
 MIXED = os.path.join(OUT, 'mixed')
 OST = os.path.join(OUT, 'ost')
 SR = 44100
@@ -147,27 +146,34 @@ def probe(path):
 def main():
     ap = argparse.ArgumentParser(prog='assemble_film')
     ap.add_argument('--no-mix', action='store_true')
-    ap.add_argument('--out', default=os.path.join(
-        OUT, '牛来_86分钟_全片_1080p.mp4'))
+    ap.add_argument('--profile', default=None, choices=[None, 'raw', 'pbr'],
+                    help='取哪套终态视频：raw=output/final，pbr=output/final_pbr；'
+                         '音轨/混音两套共用（BGM 与画面 profile 无关）')
+    ap.add_argument('--out', default=None)
     args = ap.parse_args()
+
+    tag = '' if args.profile in (None, 'raw') else f'_{args.profile}'
+    final_dir = os.path.join(OUT, f'final{tag}')
+    out_path = args.out or os.path.join(
+        OUT, f'牛来_86分钟_全片_1080p{tag}.mp4')
 
     os.makedirs(MIXED, exist_ok=True)
     parts = []
     for idx in [f'act{i}' for i in range(8)]:
         dur, tracks = RECIPES[idx]
-        video = os.path.join(FINAL, f'{idx}_1080.mp4')
+        video = os.path.join(final_dir, f'{idx}_1080.mp4')
         if not os.path.isfile(video):
             raise FileNotFoundError(f'missing act video: {video}')
         wav = os.path.join(MIXED, f'{idx}_audio.wav')
         if not args.no_mix or not os.path.isfile(wav):
             print(f'[assemble] mix {idx}:', flush=True)
             wav = mix_act(idx, dur, tracks)
-        muxed = os.path.join(MIXED, f'{idx}_muxed.mp4')
+        muxed = os.path.join(MIXED, f'{idx}_muxed{tag}.mp4')
         mux_audio(video, wav, muxed)
         parts.append(muxed)
 
     print('[assemble] concat 八幕 ->', flush=True)
-    film = concat_films(parts, args.out)
+    film = concat_films(parts, out_path)
     mb = os.path.getsize(film) / 1048576.0
     info = probe(film)
     print(f'[assemble] OK {film}  ({mb:.0f} MB)', flush=True)
