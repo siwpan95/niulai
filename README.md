@@ -116,11 +116,27 @@ P1 四幕 lanczos 升采 1080p；act5-7 原生 1080p；七处过缝帧帧唯一
 两项"可选增强"默认关闭、不静默替换既有设定：多角色配音（`--engine edge`）、
 生成式配乐（P3-3b，需 GPU）。
 
+## P5 状态（已交付 · 2026-10-18）
+
+面向"双引擎能力全量拉满"的一轮增强（全哥拍板「P5 必须全做」）。
+**覆盖实测：world3d 8/42≈19% → 24/42≈57%（贴图/材质子系统 0% → 全用）；
+allin ≈22% → ≈25%**（+BrainComponent ECS 挂载）。逐模块账见
+`docs/引擎能力审计_2026-10-18.md`（含未用项理由）。
+
+| 项 | 交付 | 实测 |
+|----|------|------|
+| **贴图/材质（P5-1）** | `--profile pbr`：world3d `Renderer` 端到端（MRT → 程序化天空 → 阴影化 PBR → SSAO → Bloom → 曝光/ACES）；`proctex` 程序化 PBR 贴图（dune/plaster/brushed/wood_planks/dragon_scale/snow + 自拼水面）、`material` 金属-粗糙度、`env` 每幕 IBL、`texproj` 平面/triplanar UV、`scene`/`mesh`/`InstancedMesh` | pbr 跨进程逐帧一致；与 raw 3/3 帧不同 |
+| **深度效果（P5-2/3/4）** | `pipeline/pbr_frame.py` 帧图驱动：`framegraph` 编译派发 + CSM 3 级阴影 + `volumetrics` 高度雾/单次散射 + `dof` 薄透镜 + `motionblur` 相机重投影 + SSAO/Bloom（线性距离图 R32F 三效果共用） | 八幕各帧目检；720p 单进程 8.6 fps（raw 11.4） |
+| **allin ECS+BT（P5-5）** | `brains/btree.py::BrainRig`：行为树挂 `BrainComponent`+`BlackboardComponent`，狼群/牛群走实体脑（黑板=单一事实源） | 与纯函数语义逐值一致（测试钉住） |
+| **能力 proof（P5-6）** | `tests/test_p5_proofs.py`：pointcloud+EDL / physics 跃溪弧线 / media CA / 程序化 GLB | 逐项确定性断言通过 |
+
+渲染 profile 三档：`raw`（默认，忠实粗粝）/ `enhanced`（WBOIT+Bloom）/ `pbr`（全量 PBR 帧图）。
+非默认 profile 的产物按目录隔离（`output/full_<profile>`、`output/final_<profile>`），
+`assemble_film.py` / `voice_mix.py` 均支持 `--profile`。
+
 ## P4 状态（已交付 · 2026-10-18）
 
 面向"内容密度 + 双引擎首批深接入"的一轮增强，详见 `docs/增强规划_P4.md`。
-**引擎覆盖实测账**（world3d 8/42 ≈19%、贴图 0%；allin ≈22%）见
-`docs/引擎能力审计_2026-10-18.md`——"全量发挥"是 P5 目标，不是现状。
 
 | 项 | 交付 | 实测 |
 |----|------|------|

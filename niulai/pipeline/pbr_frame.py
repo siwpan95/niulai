@@ -167,7 +167,7 @@ class PbrFramePipeline:
         self.n_cascades = _N_CASCADES
         self.focus = 22.0
         self.shutter = 0.55
-        self.fog_density = 0.0055     # 消光系数（y=0 处）；0.012 实测糊住远景
+        self.fog_density = 0.0019     # 消光系数（y=0 处）：0.012/0.0055 实测都把远景糊成沙暴
         self.prev_vp = None
         self._pos_cache = {}                 # id(md) -> pos vlist（静态复用）
         self._frame_pos_vls = []             # 本帧动态 pos vlist（帧末回收）
@@ -497,13 +497,13 @@ class PbrFramePipeline:
         si = float(getattr(env, 'sun_intensity', 1.0))
         sc = tuple(getattr(env, 'sun_color', (1.0, 1.0, 1.0)))
         hz = tuple(getattr(env, 'sky_horizon', (0.7, 0.7, 0.7)))
-        prog['u_fog_light_color'] = (sc[0] * si * 0.55, sc[1] * si * 0.55,
-                                     sc[2] * si * 0.55)
-        prog['u_fog_ambient'] = (hz[0] * 0.55, hz[1] * 0.55, hz[2] * 0.55)
+        prog['u_fog_light_color'] = (sc[0] * si * 0.32, sc[1] * si * 0.32,
+                                     sc[2] * si * 0.32)
+        prog['u_fog_ambient'] = (hz[0] * 0.9, hz[1] * 0.9, hz[2] * 0.9)
         prog['u_fog_density'] = self.fog_density
         prog['u_fog_falloff'] = 0.10
         prog['u_fog_base'] = 0.0
-        prog['u_fog_phase_g'] = 0.72
+        prog['u_fog_phase_g'] = 0.55
         prog['u_fog_steps'] = 40.0
         prog['u_fog_max_dist'] = float(self.cam.far)
         prog['u_fog_analytic'] = 1.0
