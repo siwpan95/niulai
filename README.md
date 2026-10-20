@@ -163,8 +163,8 @@ CSM 阴影/体积光列为 P5 候选。配音版新增 act0（云玎开口，音
 ```bat
 :: 建 venv + 装依赖 + 探测 ffmpeg（不硬编码任何本机专属路径）
 python scripts\bootstrap.py
-python scripts\bootstrap.py --python E:\py313\python.exe   :: 指定解释器
-python scripts\bootstrap.py --ffmpeg E:\ffmpeg\bin\ffmpeg.exe
+python scripts\bootstrap.py --python <Python 解释器路径>   :: 指定解释器
+python scripts\bootstrap.py --ffmpeg <ffmpeg 可执行文件路径>
 
 :: 体检：Python / venv / 依赖 / ffmpeg / 磁盘，输出 PASS-WARN-FAIL 表
 python scripts\check_env.py
@@ -174,7 +174,7 @@ python scripts\check_env.py
 避免几小时渲染后才在拼装阶段撞墙。`ffmpeg` 也可一次性固化为环境变量：
 
 ```bat
-setx NIULAI_FFMPEG E:\ffmpeg\bin\ffmpeg.exe
+setx NIULAI_FFMPEG <ffmpeg 可执行文件路径>
 ```
 
 ### 1) 测试 / 看结构
@@ -190,7 +190,7 @@ setx NIULAI_FFMPEG E:\ffmpeg\bin\ffmpeg.exe
 ```bat
 .venv\Scripts\python.exe -m niulai render --act act0_prologue ^
     --start 0 --end 1800 --size 1280x720 --out output\act0_60s ^
-    --assemble output\牛来_序幕_荒漠飞雀_60s.mp4 --ffmpeg E:\ffmpeg\bin\ffmpeg.exe
+    --assemble output\牛来_序幕_荒漠飞雀_60s.mp4 --ffmpeg <ffmpeg 可执行文件路径>
 ```
 
 设置过 `NIULAI_FFMPEG` 后可省略 `--ffmpeg`。
