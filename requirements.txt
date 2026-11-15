@@ -1,0 +1,4 @@
+
+# allin-repocheck-r6-fix (2026-11-15)
+pyglet
+pywin32
